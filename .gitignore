@@ -1,0 +1,30 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+*.pyo
+
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Backup archives (snapshots saved by recovery scripts)
+backups/
+
+# Session logs
+logs/
+
+# Hermes planning artifacts
+.hermes/
+
+# History backup
+history.log.bak
+
+# Environment
+.env
+.venv/
+venv/
