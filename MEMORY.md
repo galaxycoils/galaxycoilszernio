@@ -16,7 +16,7 @@
 - **`.git/hooks/pre-push`** — Runs `make full-audit` (syntax + verify + 78 tests) before every push. Push aborted if audit fails.
 - **`.github/workflows/ci.yml`** — GitHub Actions CI triggered on `push`/`pull_request` to `main` or `master`. Sets up Python 3.12, installs `requests`, and runs `make full-audit`.
 - **Branch protection (master)** — `audit` status check required, enforce admins, no force pushes or deletions.
-- **Ruleset** — `Require CI to pass` (ID 16668962), active, requires `audit` status check on `refs/heads/master`.
+- **Ruleset** — `Require CI to pass` (ID 16669262), active, requires `audit` status check on `refs/heads/master`.
 
 ## Queue State (as of 2026-05-20)
 - **50 scheduled posts**, 5/day × May 21–30 — fully packed, no gaps.
