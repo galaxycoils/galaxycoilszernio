@@ -5,6 +5,7 @@ Centralizes: ZERNI0 path, account ID, viral tags/hashtags, timezone,
 and the rate-limit-aware create_post retry loop.
 """
 
+from __future__ import annotations
 import os
 import shutil
 import subprocess
@@ -18,12 +19,14 @@ HASHTAGS = "#drone,#fpv,#cinematic,#aerial,#dronevideo,#fpvlife,#droneshots,#cin
 TIMEZONE = "America/New_York"
 
 
+from typing import Optional
+
 def create_post(
     url: str,
     caption: str,
     scheduled_at: str = "",
     *,
-    accounts: str | None = None,
+    accounts: Optional[str] = None,
     draft: bool = False,
     max_retries: int = 3,
     retry_delay: int = 5,

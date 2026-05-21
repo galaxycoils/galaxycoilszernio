@@ -111,5 +111,5 @@ if __name__ == "__main__":
         "history_count": len(history_ids),
         "published_count": len(published_ids),
         "scheduled_count": len(scheduled_ids),
-        "all_seen_count": len(history_ids | published_ids | scheduled_ids),
+        "all_seen_count": len(history_ids.union(published_ids).union(scheduled_ids)),
     }, indent=2))
