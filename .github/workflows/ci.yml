@@ -19,5 +19,5 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Full audit (syntax + verify + 43 tests)
+      - name: Full audit (syntax + verify + 78 tests)
         run: make full-audit

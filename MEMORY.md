@@ -9,10 +9,12 @@
 - `posts:create --draft`: Boolean flag (no value needed) to create draft posts without scheduling.
 
 ## Git & CI
-- **Git repo** initialized on 2026-05-20.
-- **`.gitignore`** excludes `__pycache__/`, `*.pyc`, `.DS_Store`, IDE dirs, `backups/`, `logs/`, `.hermes/`, `history.log.bak`, and env/virtualenv dirs.
-- **`.git/hooks/pre-push`** — Runs `make full-audit` (syntax + verify + 51 tests) before every push. Push aborted if audit fails.
+- **Git repo** initialized on 2026-05-20. **Made public** on 2026-05-20 for branch protection access.
+- **`.gitignore`** excludes `__pycache__/`, `*.pyc`, `.DS_Store`, IDE dirs, `backups/`, `logs/`, `.hermes/`, `history.log.bak`, `.env`, and env/virtualenv dirs.
+- **`.git/hooks/pre-push`** — Runs `make full-audit` (syntax + verify + 78 tests) before every push. Push aborted if audit fails.
 - **`.github/workflows/ci.yml`** — GitHub Actions CI triggered on `push`/`pull_request` to `main` or `master`. Sets up Python 3.12 and runs `make full-audit`.
+- **Branch protection (master)** — `audit` status check required, strict mode (branches must be up-to-date), enforce admins, no force pushes or deletions.
+- **Ruleset** — `Require CI to pass` (ID 16667526), active, requires `audit` status check with strict policy on `refs/heads/master`.
 
 ## Queue State (as of 2026-05-20)
 - **50 scheduled posts**, 5/day × May 21–30 — fully packed, no gaps.
@@ -20,7 +22,7 @@
 - **0 duplicates, 0 overlaps**.
 - **history.log**: Reset to 24 published-only Pexels IDs (down from 98). No stale entries. Backup deleted after verification.
 
-## Scripts Inventory (15 .py files, all syntax-clean)
+## Scripts Inventory (16 .py files, all syntax-clean)
 
 ### Documentation
 - **`WIKI.md`** — Project wiki with architecture diagram, scripts inventory, testing overview, CI/CD pipeline, quick reference.
@@ -44,6 +46,12 @@
 - **`test_post_utils.py`** — 15 unit tests covering `create_post()`: draft mode, scheduled mode, ValueError guard, command construction (flags, accounts, tags), success path, 429 rate-limit retry (stdout+stderr), and max-retry exhaustion. Isolated via `mock.patch` on `subprocess.run` and `time.sleep`. Run with `python3 -m unittest scripts.test_post_utils -v`.
 - **`test_purge_dedup.py`** — 10 unit tests covering `main()` dedup logic: oldest-first ordering, intra-queue duplicates, history duplicates, unidentifiable posts (no media/no extractable ID), dry-run isolation, and all-unique. Isolated via `mock.patch` on `purge_zernio_duplicates.*` (not `scripts.secure_dedup.*` — targets the importing module due to `from X import Y`). Run with `python3 -m unittest scripts.test_purge_dedup -v`.
 - **`test_fill_gaps.py`** — 8 unit tests covering `main()` gap-fill logic: no-slots early exit, dry-run preview (with and without slots), success path (posts created with correct tuples), insufficient URLs raising RuntimeError, and POSTS_TO_SCHEDULE=10 capping. Isolated via `mock.patch` on `fill_schedule_gaps.*` (targets the importing module). Run with `python3 -m unittest scripts.test_fill_gaps -v`.
+- **`test_schedule.py`** — 27 unit tests covering 4 core functions from `schedule_5_per_day.py`:
+  - `choose_video_url` (9 tests): single file, closest-to-1920 height, tiebreaker on min(h,w), null height, missing links, 4K vs 1080p
+  - `generate_caption_plan` (6 tests): empty/null total, known distributions (total=50 → 26/11/8/5 with banker's rounding), small totals, large totals (1000), all non-empty from known pools
+  - `open_slots` (6 tests): no scheduled → all slots, partially occupied, fully occupied, days_ahead=1, past slots excluded, weekend slots generated
+  - `fetch_unique_urls` (6 tests): no Pexels results, all duplicates filtered, some duplicates, empty input, limit control, dedup uses `get_all_seen_source_ids`
+  Run with `python3 -m unittest scripts.test_schedule -v`.
 
 ### Removed
 - **`scripts/remediate_empty_posts.py`** — Removed (superseded by `update_empty_posts.py`).
@@ -61,10 +69,10 @@
 - `make schedule` / `make schedule-dry` — schedule 5/day or preview
 - `make verify` — queue health check
 - `make audit` — syntax-check all .py files + verify
-- `make test` — run all 51 unit tests
+- `make test` — run all 78 unit tests
 - `make dedup-dry` / `make dedup` — preview/delete duplicates
 - `make empties-dry` / `make empties` — preview/fix empty captions (threshold 3)
-- `make full-audit` — syntax + verify + all 51 tests
+- `make full-audit` — syntax + verify + all 78 tests
 - ~53% of scheduled posts intentionally have empty captions (part of `generate_caption_plan()`'s content mix). `update_empty_posts.py --min-empty 3` tolerates this.
 - `purge_zernio_duplicates.py` uses `load_history()` not `get_all_seen_source_ids()` to avoid false positives from live published posts post-rebuild.
 - All scripts use `argparse` for `--help`/`--dry-run` where applicable.

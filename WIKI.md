@@ -37,12 +37,16 @@ graph TD
 | `test_post_utils` | 15 | `create_post`: draft, scheduled, ValueError, retry |
 | `test_purge_dedup` | 10 | Dedup: oldest-first, intra-queue, history, dry-run |
 | `test_fill_gaps` | 8 | Gap fill: no-slots, dry-run, success, cap, RuntimeError |
-| **Total** | **51** | |
+| `test_schedule` | 27 | `choose_video_url`, `generate_caption_plan`, `open_slots`, `fetch_unique_urls` |
+| **Total** | **78** | |
 
 ## CI/CD Pipeline
 
+- **Public repo** — `github.com/galaxycoils/galaxycoilszernio`
 - **`.git/hooks/pre-push`** → Runs `make full-audit` before every push
-- **`.github/workflows/ci.yml`** → GitHub Actions on push/PR to main/master
+- **`.github/workflows/ci.yml`** → GitHub Actions on push/PR to master (Python 3.12)
+- **Branch protection** → `audit` status check required, strict mode, enforce admins
+- **Ruleset** → `Require CI to pass` (ID 16667526), active on `refs/heads/master`
 
 ## Quick Reference
 
@@ -51,8 +55,8 @@ make help              # Show all commands
 make schedule          # Schedule 5 posts/day
 make schedule-dry      # Preview scheduling
 make verify            # Queue health check
-make test              # Run all 51 tests
-make full-audit        # Syntax + verify + 51 tests
+make test              # Run all 78 tests
+make full-audit        # Syntax + verify + 78 tests
 make dedup-dry         # Preview duplicates
 make empties-dry       # Preview empty captions (threshold 3)
 ```
@@ -63,7 +67,8 @@ make empties-dry       # Preview empty captions (threshold 3)
 - **53% empty captions** are intentional — part of `generate_caption_plan()`'s content mix
 - **`--min-empty 3`** tolerates the ~3 intended empty posts from the caption plan
 - **`purge_zernio_duplicates.py`** uses `load_history()` only (not published posts) to avoid false positives
-- All scripts use `argparse` for consistent CLI experience
+- **`.env`** stores `PEXELS_API_KEY` (auto-loaded at startup, excluded via `.gitignore`)
+- No hardcoded secrets in any source file
 
 ## See Also
 

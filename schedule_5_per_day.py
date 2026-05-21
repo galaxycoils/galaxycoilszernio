@@ -4,6 +4,8 @@ Usage:
   python3 schedule_5_per_day.py              # Schedule posts for open slots
   python3 schedule_5_per_day.py --dry-run    # Preview what would be scheduled
   python3 schedule_5_per_day.py --help       # Show all options
+
+Set PEXELS_API_KEY in a .env file or environment variable.
 """
 
 import argparse
@@ -13,13 +15,26 @@ import random
 import subprocess
 import time
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Dict, List, Tuple
 
 import requests
 
 from scripts.post_utils import create_post as _create_post, ZERNI0
 from scripts.secure_dedup import extract_id, get_all_seen_source_ids, record_scheduled
-PEXELS_API_KEY = os.getenv("PEXELS_API_KEY", "jsVc9Hd2JnpHjPeY5347XU9UHDkz75QLtFkGKmxMS4o44GlG4mHo1jAz")
+
+# Load .env file if it exists (so the .env file at project root is picked up automatically)
+_dotenv_path = Path(__file__).resolve().parent / ".env"
+if _dotenv_path.is_file():
+    with open(_dotenv_path) as _f:
+        for _line in _f:
+            _line = _line.strip()
+            if _line and not _line.startswith("#") and "=" in _line:
+                _key, _val = _line.split("=", 1)
+                if _key not in os.environ:
+                    os.environ[_key] = _val
+
+PEXELS_API_KEY = os.getenv("PEXELS_API_KEY")
 SLOTS = [10, 13, 16, 19, 22]
 QUERY_POOL = [
     "drone cinematic",
