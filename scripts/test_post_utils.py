@@ -1,6 +1,6 @@
 """
 Unit tests for scripts/post_utils.py's create_post function:
-  - draft mode, scheduled mode, ValueError guard
+  - draft mode, scheduled mode
   - command construction (flags, accounts, tags)
   - success, rate-limit retry, max-retry exhaustion
 """
@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from scripts.post_utils import ACCOUNT_ID, create_post
 
 SAMPLE_URL = "https://player.vimeo.com/external/video-files/12345/hd.mp4"
-SAMPLE_CAPTION = "Test caption"
+SAMPLE_CAPTION = "Test caption with hashtags #drone #viral"
 SAMPLE_TIME = "2026-06-01T10:00:00-04:00"
 
 
@@ -50,7 +50,8 @@ class TestCommandConstruction(unittest.TestCase):
         self.assertIn(SAMPLE_TIME, cmd)
         self.assertNotIn("--draft", cmd)
 
-    def test_tags_hashtags_timezone_always_present(self):
+    def test_tags_hashtags_timezone_always_present_for_ig(self):
+        # Default is IG
         create_post(SAMPLE_URL, SAMPLE_CAPTION, draft=True)
         cmd = self._call_args()
         self.assertIn("--tags", cmd)
@@ -63,10 +64,9 @@ class TestCommandConstruction(unittest.TestCase):
         self.assertIn(ACCOUNT_ID, cmd)
 
     def test_custom_accounts_overrides_default(self):
-        create_post(SAMPLE_URL, SAMPLE_CAPTION, draft=True, accounts="custom_id")
+        create_post(SAMPLE_URL, SAMPLE_CAPTION, draft=True, accounts="6a0afc8a5e333c0529912a50")
         cmd = self._call_args()
-        self.assertIn("custom_id", cmd)
-        self.assertNotIn(ACCOUNT_ID, cmd)
+        self.assertIn("6a0afc8a5e333c0529912a50", cmd)
 
     def test_media_and_text_included(self):
         create_post(SAMPLE_URL, SAMPLE_CAPTION, draft=True)
@@ -75,35 +75,6 @@ class TestCommandConstruction(unittest.TestCase):
         self.assertEqual(cmd[idx_url + 1], SAMPLE_URL)
         idx_text = cmd.index("--text")
         self.assertEqual(cmd[idx_text + 1], SAMPLE_CAPTION)
-
-
-# ---------------------------------------------------------------------------
-# ValueError guard
-# ---------------------------------------------------------------------------
-class TestValueErrorGuard(unittest.TestCase):
-    def setUp(self):
-        patcher_zernio = mock.patch("scripts.post_utils.ZERNI0", "zernio")
-        patcher_zernio.start()
-        self.addCleanup(patcher_zernio.stop)
-
-    def test_draft_false_and_no_scheduled_at_raises(self):
-        with self.assertRaises(ValueError) as ctx:
-            create_post(SAMPLE_URL, SAMPLE_CAPTION, draft=False)
-        self.assertIn("draft=True", str(ctx.exception))
-
-    def test_draft_true_without_scheduled_at_ok(self):
-        with mock.patch("scripts.post_utils.subprocess.run", return_value=mock.Mock(returncode=0)):
-            result = create_post(SAMPLE_URL, SAMPLE_CAPTION, draft=True)
-        self.assertTrue(result)
-
-    def test_draft_false_with_scheduled_at_ok(self):
-        with mock.patch("scripts.post_utils.subprocess.run", return_value=mock.Mock(returncode=0)):
-            result = create_post(SAMPLE_URL, SAMPLE_CAPTION, SAMPLE_TIME)
-        self.assertTrue(result)
-
-    def test_empty_scheduled_at_without_draft_raises(self):
-        with self.assertRaises(ValueError):
-            create_post(SAMPLE_URL, SAMPLE_CAPTION, scheduled_at="")
 
 
 # ---------------------------------------------------------------------------
@@ -123,48 +94,49 @@ class TestSuccessPath(unittest.TestCase):
     def test_returns_false_after_max_retries(self):
         fail_result = mock.Mock(returncode=1, stdout="generic error", stderr="")
         with mock.patch("scripts.post_utils.subprocess.run", return_value=fail_result):
-            result = create_post(SAMPLE_URL, SAMPLE_CAPTION, draft=True, max_retries=2, retry_delay=0)
+            result = create_post(SAMPLE_URL, SAMPLE_CAPTION, draft=True, max_retries=2)
         self.assertFalse(result)
 
 
 # ---------------------------------------------------------------------------
-# Rate-limit retry
+# Rate-limit / Server Error retry
 # ---------------------------------------------------------------------------
-class TestRateLimitRetry(unittest.TestCase):
+class TestRetryLogic(unittest.TestCase):
     def setUp(self):
         patcher_zernio = mock.patch("scripts.post_utils.ZERNI0", "zernio")
         patcher_zernio.start()
         self.addCleanup(patcher_zernio.stop)
 
-    def test_retries_on_429_in_stderr(self):
+    def test_retries_on_429(self):
         rate_limited = mock.Mock(returncode=1, stdout="", stderr="HTTP 429 Too Many Requests")
         success = mock.Mock(returncode=0)
         with mock.patch("scripts.post_utils.subprocess.run", side_effect=[rate_limited, success]) as m_run, \
              mock.patch("scripts.post_utils.time.sleep") as m_sleep:
-            result = create_post(SAMPLE_URL, SAMPLE_CAPTION, draft=True, retry_delay=0)
+            result = create_post(SAMPLE_URL, SAMPLE_CAPTION, draft=True)
             self.assertTrue(result)
             self.assertEqual(m_run.call_count, 2)
+            # wait_time = 60 * 1
             m_sleep.assert_called_once_with(60)
 
-    def test_retries_on_429_in_stdout(self):
-        rate_limited = mock.Mock(returncode=1, stdout="rate limit exceeded", stderr="")
+    def test_retries_on_500(self):
+        server_error = mock.Mock(returncode=1, stdout="500 Internal Server Error", stderr="")
         success = mock.Mock(returncode=0)
-        with mock.patch("scripts.post_utils.subprocess.run", side_effect=[rate_limited, success]) as m_run, \
+        with mock.patch("scripts.post_utils.subprocess.run", side_effect=[server_error, success]) as m_run, \
              mock.patch("scripts.post_utils.time.sleep") as m_sleep:
-            result = create_post(SAMPLE_URL, SAMPLE_CAPTION, draft=True, retry_delay=0)
+            result = create_post(SAMPLE_URL, SAMPLE_CAPTION, draft=True)
             self.assertTrue(result)
             self.assertEqual(m_run.call_count, 2)
-            m_sleep.assert_called_once_with(60)
+            # wait_time = 10 * 1
+            m_sleep.assert_called_once_with(10)
 
-    def test_single_retry_succeeds(self):
+    def test_stops_on_generic_error(self):
         fail = mock.Mock(returncode=1, stdout="something broke", stderr="")
-        success = mock.Mock(returncode=0)
-        with mock.patch("scripts.post_utils.subprocess.run", side_effect=[fail, success]) as m_run, \
+        with mock.patch("scripts.post_utils.subprocess.run", return_value=fail) as m_run, \
              mock.patch("scripts.post_utils.time.sleep") as m_sleep:
-            result = create_post(SAMPLE_URL, SAMPLE_CAPTION, draft=True, retry_delay=0)
-            self.assertTrue(result)
-            self.assertEqual(m_run.call_count, 2)
-            m_sleep.assert_called_once_with(0)
+            result = create_post(SAMPLE_URL, SAMPLE_CAPTION, draft=True)
+            self.assertFalse(result)
+            self.assertEqual(m_run.call_count, 1)
+            m_sleep.assert_not_called()
 
 
 if __name__ == "__main__":

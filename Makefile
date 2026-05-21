@@ -49,13 +49,16 @@ verify:
 	python3 scripts/verify_queue.py
 
 audit:
+	@echo "=== Health Check ==="
+	@python3 scripts/health_monitor.py
+	@echo ""
 	@echo "=== Syntax check ==="
 	@for f in \
 	  purge_zernio_duplicates.py fill_schedule_gaps.py schedule_5_per_day.py \
 	  scripts/batch_recover.py scripts/rebuild_viral_queue.py \
 	  scripts/captions_pool.py scripts/chunk_recover.py scripts/secure_dedup.py \
 	  scripts/verify_queue.py scripts/recover_rebuild.py scripts/post_utils.py \
-	  scripts/update_empty_posts.py \
+	  scripts/update_empty_posts.py scripts/health_monitor.py \
 	  scripts/test_secure_dedup.py scripts/test_post_utils.py scripts/test_purge_dedup.py \
 	  scripts/test_fill_gaps.py scripts/test_schedule.py; \
 	do \

@@ -24,7 +24,7 @@
 - **0 duplicates, 0 overlaps**.
 - **history.log**: Reset to 24 published-only Pexels IDs (down from 98). No stale entries. Backup deleted after verification.
 
-## Scripts Inventory (17 .py files, all syntax-clean)
+## Scripts Inventory (18 .py files, all syntax-clean)
 
 ### Documentation
 - **`WIKI.md`** — Project wiki with architecture diagram, scripts inventory, testing overview, CI/CD pipeline, quick reference.
@@ -36,10 +36,11 @@
 - **`purge_zernio_duplicates.py`** — Finds & deletes duplicate scheduled posts using `secure_dedup.py`'s `load_history()` as source of truth. Has `--dry-run` (argparse). Processes oldest-first, records through `record_scheduled()` to stay synced. No longer duplicates dedup logic.
 
 ### Scripts/ directory
+- **`health_monitor.py`** — Pre-flight infrastructure check (Pexels API + Zernio CLI).
 - **`captions_pool.py`** — Shared caption constants: MICRO_HOOKS (10), VALUE_CAPTIONS (7), CTA_CAPTIONS (21 — expanded from 4). Single source of truth for all scheduling/recovery/rebuild scripts.
 - **`secure_dedup.py`** — Single canonical dedup module. Provides `load_history()`, `get_all_seen_source_ids()`, `fetch_posts()`, `fetch_published_source_ids()`, `fetch_scheduled_source_ids()`, `extract_id()`, `record_scheduled()`, `record_many()`.
 - **`update_empty_posts.py`** — Finds & fixes empty-caption scheduled posts (delete+recreate with CTA captions). Has `--dry-run` (argparse) and `--min-empty N` (threshold before acting, default 0). Uses `post_utils.create_post`.
-- **`post_utils.py`** — `create_post(media_url, caption, scheduled_at="", draft=False)`. When `draft=True`, appends `--draft` instead of `--scheduledAt`. Raises `ValueError` if neither provided.
+- **`post_utils.py`** — `create_post(...)`. Now includes systematic-debugging retry logic (429/500) with exponential backoff.
 - **`verify_queue.py`** — Full queue health checker: total, per-day, caption mix, duplicates, overlaps.
 - **`batch_recover.py`** — Recovers posts by batch. Has `argparse` with required `batch_num` positional + auto `--help`.
 - **`chunk_recover.py`** — Recovers posts by chunk range. Has `argparse` with required `start`/`end` positionals, bounds validation + auto `--help`.
