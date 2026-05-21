@@ -22,7 +22,7 @@
 
 .PHONY: help schedule schedule-dry fill-gaps fill-gaps-dry \
         verify audit test test-secure test-post test-purge test-gaps test-schedule \
-        dedup-dry dedup empties-dry empties full-audit
+        dedup-dry dedup empties-dry empties full-audit analytics
 
 # ── Scheduling ─────────────────────────────────────────────────
 
@@ -37,6 +37,11 @@ fill-gaps:
 
 fill-gaps-dry:
 	python3 fill_schedule_gaps.py --dry-run
+
+# ── Analytics ──────────────────────────────────────────────────
+
+analytics:
+	python3 scripts/analyze_engagement.py
 
 # ── Verification ───────────────────────────────────────────────
 
