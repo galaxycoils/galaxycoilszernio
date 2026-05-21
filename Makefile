@@ -6,7 +6,7 @@
 #  make fill-gaps      Fill up to 10 schedule gaps
 #  make fill-gaps-dry  Preview gap-fill without creating
 #  make verify         Full queue health check
-#  make audit          Syntax-check all .py files + verify queue
+#  make audit          Syntax-check all 17 .py files + verify queue
 #  make test           Run all 78 unit tests
 #  make test-secure    Run secure_dedup tests (18)
 #  make test-post      Run post_utils tests (15)
@@ -17,7 +17,7 @@
 #  make dedup          Delete duplicate scheduled posts
 #  make empties-dry    Preview empty-caption posts
 #  make empties        Fix empty-caption posts
-#  make full-audit     Syntax + verify + all 78 tests
+#  make full-audit     Syntax + verify + all 78 tests (17 files)
 # ────────────────────────────────────────────────────────────────
 
 .PHONY: help schedule schedule-dry fill-gaps fill-gaps-dry \
@@ -48,8 +48,9 @@ audit:
 	@for f in \
 	  purge_zernio_duplicates.py fill_schedule_gaps.py schedule_5_per_day.py \
 	  scripts/batch_recover.py scripts/rebuild_viral_queue.py \
-	  scripts/chunk_recover.py scripts/secure_dedup.py scripts/verify_queue.py \
-	  scripts/recover_rebuild.py scripts/post_utils.py scripts/update_empty_posts.py \
+	  scripts/captions_pool.py scripts/chunk_recover.py scripts/secure_dedup.py \
+	  scripts/verify_queue.py scripts/recover_rebuild.py scripts/post_utils.py \
+	  scripts/update_empty_posts.py \
 	  scripts/test_secure_dedup.py scripts/test_post_utils.py scripts/test_purge_dedup.py \
 	  scripts/test_fill_gaps.py scripts/test_schedule.py; \
 	do \

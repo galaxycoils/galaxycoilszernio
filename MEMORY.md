@@ -1,7 +1,9 @@
 # GalaxyCoils & Zernio Persistent Memory
 
 ## GalaxyCoils
-- Engagement pivot: Successfully implemented 30% CTA mix strategy.
+- Engagement pivot deployed (2026-05-20): 30% CTA / 30% Empty / 22% Micro-hook / 18% Value caption mix.
+- CTA pool expanded from 4 to 21 hooks, centralized in `scripts/captions_pool.py`.
+- Caption constants centralized in `scripts/captions_pool.py` (single source of truth).
 
 ## Zernio CLI Learnings
 - `posts:create`: The `--platform instagram` flag requires specific handling (observed quirks, now resolved).
@@ -12,17 +14,17 @@
 - **Git repo** initialized on 2026-05-20. **Made public** on 2026-05-20 for branch protection access.
 - **`.gitignore`** excludes `__pycache__/`, `*.pyc`, `.DS_Store`, IDE dirs, `backups/`, `logs/`, `.hermes/`, `history.log.bak`, `.env`, and env/virtualenv dirs.
 - **`.git/hooks/pre-push`** — Runs `make full-audit` (syntax + verify + 78 tests) before every push. Push aborted if audit fails.
-- **`.github/workflows/ci.yml`** — GitHub Actions CI triggered on `push`/`pull_request` to `main` or `master`. Sets up Python 3.12 and runs `make full-audit`.
-- **Branch protection (master)** — `audit` status check required, strict mode (branches must be up-to-date), enforce admins, no force pushes or deletions.
-- **Ruleset** — `Require CI to pass` (ID 16667526), active, requires `audit` status check with strict policy on `refs/heads/master`.
+- **`.github/workflows/ci.yml`** — GitHub Actions CI triggered on `push`/`pull_request` to `main` or `master`. Sets up Python 3.12, installs `requests`, and runs `make full-audit`.
+- **Branch protection (master)** — `audit` status check required, enforce admins, no force pushes or deletions.
+- **Ruleset** — `Require CI to pass` (ID 16667526), active, requires `audit` status check on `refs/heads/master`.
 
 ## Queue State (as of 2026-05-20)
 - **50 scheduled posts**, 5/day × May 21–30 — fully packed, no gaps.
-- **Caption mix**: ~44% other/CTA, ~30% micro-hook, ~18% value, ~6% empty (by design).
+- **Caption mix** (engagement pivot): ~30% CTA, ~30% empty, ~22% micro-hook, ~18% value.
 - **0 duplicates, 0 overlaps**.
 - **history.log**: Reset to 24 published-only Pexels IDs (down from 98). No stale entries. Backup deleted after verification.
 
-## Scripts Inventory (16 .py files, all syntax-clean)
+## Scripts Inventory (17 .py files, all syntax-clean)
 
 ### Documentation
 - **`WIKI.md`** — Project wiki with architecture diagram, scripts inventory, testing overview, CI/CD pipeline, quick reference.
@@ -34,6 +36,7 @@
 - **`purge_zernio_duplicates.py`** — Finds & deletes duplicate scheduled posts using `secure_dedup.py`'s `load_history()` as source of truth. Has `--dry-run` (argparse). Processes oldest-first, records through `record_scheduled()` to stay synced. No longer duplicates dedup logic.
 
 ### Scripts/ directory
+- **`captions_pool.py`** — Shared caption constants: MICRO_HOOKS (10), VALUE_CAPTIONS (7), CTA_CAPTIONS (21 — expanded from 4). Single source of truth for all scheduling/recovery/rebuild scripts.
 - **`secure_dedup.py`** — Single canonical dedup module. Provides `load_history()`, `get_all_seen_source_ids()`, `fetch_posts()`, `fetch_published_source_ids()`, `fetch_scheduled_source_ids()`, `extract_id()`, `record_scheduled()`, `record_many()`.
 - **`update_empty_posts.py`** — Finds & fixes empty-caption scheduled posts (delete+recreate with CTA captions). Has `--dry-run` (argparse) and `--min-empty N` (threshold before acting, default 0). Uses `post_utils.create_post`.
 - **`post_utils.py`** — `create_post(media_url, caption, scheduled_at="", draft=False)`. When `draft=True`, appends `--draft` instead of `--scheduledAt`. Raises `ValueError` if neither provided.
@@ -48,7 +51,7 @@
 - **`test_fill_gaps.py`** — 8 unit tests covering `main()` gap-fill logic: no-slots early exit, dry-run preview (with and without slots), success path (posts created with correct tuples), insufficient URLs raising RuntimeError, and POSTS_TO_SCHEDULE=10 capping. Isolated via `mock.patch` on `fill_schedule_gaps.*` (targets the importing module). Run with `python3 -m unittest scripts.test_fill_gaps -v`.
 - **`test_schedule.py`** — 27 unit tests covering 4 core functions from `schedule_5_per_day.py`:
   - `choose_video_url` (9 tests): single file, closest-to-1920 height, tiebreaker on min(h,w), null height, missing links, 4K vs 1080p
-  - `generate_caption_plan` (6 tests): empty/null total, known distributions (total=50 → 26/11/8/5 with banker's rounding), small totals, large totals (1000), all non-empty from known pools
+  - `generate_caption_plan` (6 tests): empty/null total, known distributions (total=50 → 15/11/9/15 with 30/30/22/18 mix), small totals, large totals (1000), all non-empty from known pools
   - `open_slots` (6 tests): no scheduled → all slots, partially occupied, fully occupied, days_ahead=1, past slots excluded, weekend slots generated
   - `fetch_unique_urls` (6 tests): no Pexels results, all duplicates filtered, some duplicates, empty input, limit control, dedup uses `get_all_seen_source_ids`
   Run with `python3 -m unittest scripts.test_schedule -v`.
@@ -73,7 +76,7 @@
 - `make dedup-dry` / `make dedup` — preview/delete duplicates
 - `make empties-dry` / `make empties` — preview/fix empty captions (threshold 3)
 - `make full-audit` — syntax + verify + all 78 tests
-- ~53% of scheduled posts intentionally have empty captions (part of `generate_caption_plan()`'s content mix). `update_empty_posts.py --min-empty 3` tolerates this.
+- ~30% of scheduled posts intentionally have empty captions (part of `generate_caption_plan()`'s engagement pivot mix). `update_empty_posts.py --min-empty 3` tolerates this.
 - `purge_zernio_duplicates.py` uses `load_history()` not `get_all_seen_source_ids()` to avoid false positives from live published posts post-rebuild.
 - All scripts use `argparse` for `--help`/`--dry-run` where applicable.
 

@@ -95,17 +95,16 @@ class TestGenerateCaptionPlan(unittest.TestCase):
             self.assertEqual(len(schedule_5_per_day.generate_caption_plan(n)), n)
 
     def test_known_totals_match_expected_distribution(self):
-        """Verify the deterministic count formula produces expected results.
-        Python 3 banker's rounding: round(26.5) = 26 (rounds .5 to even)."""
-        # total=50: empty=round(26.5)=26, micro=round(11)=11, value=round(8)=8, cta=5
+        """Verify engagement pivot distribution (30/30/22/18).
+        total=50: empty=round(15)=15, micro=round(11)=11, value=round(9)=9, cta=15"""
         plan = schedule_5_per_day.generate_caption_plan(50)
         empty = sum(1 for c in plan if c == "")
         non_empty = [c for c in plan if c]
-        self.assertEqual(empty, 26)
-        self.assertEqual(len(non_empty), 24)  # 11+8+5
+        self.assertEqual(empty, 15)
+        self.assertEqual(len(non_empty), 35)  # 11+9+15
 
     def test_small_total(self):
-        """total=2: empty=round(1.06)=1, micro=round(0.44)=0, value=round(0.32)=0, cta=1"""
+        """total=2: empty=round(0.6)=1, micro=round(0.44)=0, value=round(0.36)=0, cta=1"""
         plan = schedule_5_per_day.generate_caption_plan(2)
         self.assertEqual(len(plan), 2)
         empty = sum(1 for c in plan if c == "")
@@ -124,18 +123,18 @@ class TestGenerateCaptionPlan(unittest.TestCase):
                 self.assertIn(c, known, f"Unexpected caption: {c!r}")
 
     def test_large_total_approximate_distribution(self):
-        """With total=1000, counts should be within ±5 of expected."""
+        """With total=1000, counts should be within ±5 of expected (30/30/22/18)."""
         plan = schedule_5_per_day.generate_caption_plan(1000)
         empty = sum(1 for c in plan if c == "")
         micro = sum(1 for c in plan if c in schedule_5_per_day.MICRO_HOOKS)
         value = sum(1 for c in plan if c in schedule_5_per_day.VALUE_CAPTIONS)
         cta = sum(1 for c in plan if c in schedule_5_per_day.CTA_CAPTIONS)
 
-        # expected: empty=530, micro=220, value=160, cta=90
-        self.assertAlmostEqual(empty, 530, delta=5)
+        # expected: empty=300, micro=220, value=180, cta=300
+        self.assertAlmostEqual(empty, 300, delta=5)
         self.assertAlmostEqual(micro, 220, delta=5)
-        self.assertAlmostEqual(value, 160, delta=5)
-        self.assertAlmostEqual(cta,   90,  delta=5)
+        self.assertAlmostEqual(value, 180, delta=5)
+        self.assertAlmostEqual(cta,   300, delta=5)
 
 
 # ═══════════════════════════════════════════════════════════════

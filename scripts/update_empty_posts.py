@@ -23,31 +23,8 @@ from pathlib import Path
 # Ensure project root is on sys.path so `from scripts.post_utils import ...` works
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from scripts.captions_pool import CTA_CAPTIONS
 from scripts.post_utils import ZERNI0, create_post as _create_post
-
-CTA_CAPTIONS = [
-    "Rate this flight 1-10 below 👇",
-    "FPV or Cinematic? Vote below 👇",
-    "Tag your travel partner ✈️",
-    "Drop a 🚁 if you'd fly this line.",
-    "Who else needs this vibe right now? ✨",
-    "Where is this? (Wrong answers only) 👇",
-    "Drop a 🔥 if you want the location.",
-    "Rate this 1-10.",
-    "Tag someone who needs a vacation here.",
-    "Would you fly this drone?",
-    "Best place for a flight?",
-    "What's the first thing you'd shoot here?",
-    "Could you handle this drop?",
-    "Yes or No?",
-    "Tag your flight partner.",
-    "Drop a ❤️ if you want to be here.",
-    "Which angle won?",
-    "Which shot would you keep?",
-    "Too slow or just right?",
-    "Would you post this take?",
-    "Which angle hits harder?",
-]
 
 
 def _run_json(cmd):

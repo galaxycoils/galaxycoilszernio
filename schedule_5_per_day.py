@@ -20,6 +20,7 @@ from typing import Dict, List, Tuple
 
 import requests
 
+from scripts.captions_pool import CTA_CAPTIONS, MICRO_HOOKS, VALUE_CAPTIONS
 from scripts.post_utils import create_post as _create_post, ZERNI0
 from scripts.secure_dedup import extract_id, get_all_seen_source_ids, record_scheduled
 
@@ -46,33 +47,7 @@ QUERY_POOL = [
     "drone forest",
     "golden hour drone",
 ]
-MICRO_HOOKS = [
-    "Clean line, hard drop.",
-    "Too smooth.",
-    "Locked in.",
-    "Frame it tighter.",
-    "Built for rewatch.",
-    "Precision beats speed.",
-    "One pass only.",
-    "The angle matters.",
-    "Worth the reset.",
-    "Watch the pacing.",
-]
-VALUE_CAPTIONS = [
-    "Save this: 3 drone moves that instantly look more cinematic.",
-    "Save for your next flight: slower yaw, lower altitude, longer hold.",
-    "If your footage feels flat, fix these first: speed, horizon, entry.",
-    "Save this framing rule: one subject, one direction, one clean exit.",
-    "Drone edit tip: cut on motion, not on music alone.",
-    "Save this if you shoot real estate: reveal late, not immediately.",
-    "Save this workflow: shoot once, crop for reels, stories, and ads.",
-]
-CTA_CAPTIONS = [
-    "Which shot would you keep?",
-    "Too slow or just right?",
-    "Would you post this take?",
-    "Which angle hits harder?",
-]
+# Caption pools imported from scripts.captions_pool (engagement pivot: 30/30/22/18)
 
 
 def run_json(cmd: List[str]) -> dict:
@@ -127,9 +102,10 @@ def fetch_unique_urls(limit: int) -> List[str]:
 
 
 def generate_caption_plan(total: int) -> List[str]:
-    empty_count = round(total * 0.53)
+    # Engagement pivot (2026-05-20): 30% CTA / 30% Empty / 22% Micro / 18% Value
+    empty_count = round(total * 0.30)
     micro_count = round(total * 0.22)
-    value_count = round(total * 0.16)
+    value_count = round(total * 0.18)
     cta_count = total - empty_count - micro_count - value_count
     plan = [""] * empty_count
     plan += random.sample(MICRO_HOOKS * ((micro_count // len(MICRO_HOOKS)) + 1), micro_count)
