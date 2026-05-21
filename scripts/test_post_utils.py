@@ -23,6 +23,9 @@ SAMPLE_TIME = "2026-06-01T10:00:00-04:00"
 # ---------------------------------------------------------------------------
 class TestCommandConstruction(unittest.TestCase):
     def setUp(self):
+        patcher_zernio = mock.patch("scripts.post_utils.ZERNI0", "zernio")
+        patcher_zernio.start()
+        self.addCleanup(patcher_zernio.stop)
         self.patcher = mock.patch("scripts.post_utils.subprocess.run", return_value=mock.Mock(returncode=0))
         self.mock_run = self.patcher.start()
 
@@ -78,6 +81,11 @@ class TestCommandConstruction(unittest.TestCase):
 # ValueError guard
 # ---------------------------------------------------------------------------
 class TestValueErrorGuard(unittest.TestCase):
+    def setUp(self):
+        patcher_zernio = mock.patch("scripts.post_utils.ZERNI0", "zernio")
+        patcher_zernio.start()
+        self.addCleanup(patcher_zernio.stop)
+
     def test_draft_false_and_no_scheduled_at_raises(self):
         with self.assertRaises(ValueError) as ctx:
             create_post(SAMPLE_URL, SAMPLE_CAPTION, draft=False)
@@ -102,6 +110,11 @@ class TestValueErrorGuard(unittest.TestCase):
 # Success / failure paths
 # ---------------------------------------------------------------------------
 class TestSuccessPath(unittest.TestCase):
+    def setUp(self):
+        patcher_zernio = mock.patch("scripts.post_utils.ZERNI0", "zernio")
+        patcher_zernio.start()
+        self.addCleanup(patcher_zernio.stop)
+
     def test_returns_true_on_success(self):
         with mock.patch("scripts.post_utils.subprocess.run", return_value=mock.Mock(returncode=0)):
             result = create_post(SAMPLE_URL, SAMPLE_CAPTION, draft=True)
@@ -118,6 +131,11 @@ class TestSuccessPath(unittest.TestCase):
 # Rate-limit retry
 # ---------------------------------------------------------------------------
 class TestRateLimitRetry(unittest.TestCase):
+    def setUp(self):
+        patcher_zernio = mock.patch("scripts.post_utils.ZERNI0", "zernio")
+        patcher_zernio.start()
+        self.addCleanup(patcher_zernio.stop)
+
     def test_retries_on_429_in_stderr(self):
         rate_limited = mock.Mock(returncode=1, stdout="", stderr="HTTP 429 Too Many Requests")
         success = mock.Mock(returncode=0)

@@ -5,10 +5,12 @@ Centralizes: ZERNI0 path, account ID, viral tags/hashtags, timezone,
 and the rate-limit-aware create_post retry loop.
 """
 
+import os
+import shutil
 import subprocess
 import time
 
-ZERNI0 = "/Users/cmd/.npm-global/bin/zernio"
+ZERNI0 = shutil.which("zernio") or os.environ.get("ZERNIO_PATH", "")
 ACCOUNT_ID = "6a0afc8a5e333c0529912a50"
 
 TAGS = "drone,fpv,cinematic,aerial,dronevideo,fpvlife,cinematography,dronelife,aerialvideography,viral"
@@ -40,6 +42,8 @@ def create_post(
     Note: zernio auto-detects platform from the account ID, so no --platform
     flag is needed (nor does the CLI support one).
     """
+    if not ZERNI0:
+        return False
     cmd = [
         ZERNI0, "posts:create",
         "--text", caption,

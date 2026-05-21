@@ -1,4 +1,6 @@
 import json
+import os
+import shutil
 import subprocess
 import sys
 import time
@@ -7,7 +9,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-ZERNI0 = "/Users/cmd/.npm-global/bin/zernio"
+ZERNI0 = shutil.which("zernio") or os.environ.get("ZERNIO_PATH", "")
 ACCOUNT_ID = "6a0afc8a5e333c0529912a50"
 BACKUP_MANIFEST = "/Users/cmd/galaxycoilszernio/backups/2026-05-20-fix/rebuild-manifest.json"
 

@@ -1,13 +1,14 @@
 import json
 import os
 import re
+import shutil
 import subprocess
 from collections import Counter
 from typing import Iterable, List, Optional, Set
 
 BASE_DIR = "/Users/cmd/galaxycoilszernio"
 HISTORY_FILE = f"{BASE_DIR}/history.log"
-ZERNI0 = "/Users/cmd/.npm-global/bin/zernio"
+ZERNI0 = shutil.which("zernio") or os.environ.get("ZERNIO_PATH", "")
 
 
 def load_history() -> Set[str]:
@@ -39,6 +40,8 @@ def _run_json(cmd: List[str]) -> dict:
 
 
 def fetch_posts(status: str, limit: int = 100) -> List[dict]:
+    if not ZERNI0:
+        return []
     data = _run_json([ZERNI0, "posts:list", "--status", status, "--limit", str(limit), "--pretty"])
     return data.get("posts", [])
 

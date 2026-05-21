@@ -10,6 +10,8 @@ Usage:
 """
 
 import argparse
+import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -24,7 +26,7 @@ from scripts.secure_dedup import (
     record_scheduled,
 )
 
-ZERNI0 = "/Users/cmd/.npm-global/bin/zernio"
+ZERNI0 = shutil.which("zernio") or os.environ.get("ZERNIO_PATH", "")
 
 
 def main():
