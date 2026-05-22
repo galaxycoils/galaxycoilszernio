@@ -7,6 +7,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from scripts.secure_dedup import extract_id, fetch_posts, fetch_published_source_ids
 
+# Ensure absolute ZERNI0 path in secure_dedup
+import scripts.secure_dedup as sd
+sd.ZERNI0 = "/Users/cmd/.npm-global/bin/zernio"
+
 
 def classify_caption(content: str) -> str:
     text = (content or "").strip()
