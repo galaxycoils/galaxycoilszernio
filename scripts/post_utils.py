@@ -8,7 +8,10 @@ import time
 import json
 import os
 import shutil
+import requests
+import uuid
 from typing import Optional
+from pathlib import Path
 
 def _resolve_zernio() -> str:
     path = shutil.which("zernio") or os.environ.get("ZERNIO_PATH")
@@ -27,6 +30,95 @@ HASHTAGS = "#drone,#fpv,#cinematic,#aerial,#dronevideo,#fpvlife,#droneshots,#cin
 TIMEZONE = "America/New_York"
 
 
+def ensure_zernio_media_url(url: str) -> str:
+    """
+    Ensure the media URL is hosted on Zernio CDN.
+    If it's a local file, uploads it.
+    If it's a remote URL (including existing zernio.com URLs), downloads it locally then uploads it to Zernio as a fresh asset.
+    """
+    if not url:
+        return url
+        
+    # Case 1: Local file path (exists and is not a URL)
+    if not (url.startswith("http://") or url.startswith("https://")) and os.path.exists(url) and os.path.isfile(url):
+        try:
+            print(f"Uploading local media file to Zernio CDN: {url}")
+            cmd = [ZERNI0, "media:upload", url, "--pretty"]
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.returncode == 0:
+                data = json.loads(result.stdout)
+                zernio_url = data.get("url")
+                if zernio_url:
+                    print(f"  ✓ Media uploaded to Zernio CDN: {zernio_url}")
+                    return zernio_url
+            print(f"  ✗ Local media upload failed with returncode {result.returncode}: {result.stderr}")
+        except Exception as e:
+            print(f"  ✗ Exception during local media upload: {e}")
+        return url
+
+    # Case 2: Remote URL (treat all URLs as remote to ensure a fresh Zernio asset)
+    if url.startswith("http://") or url.startswith("https://"):
+        ext = ".mp4"
+        url_lower = url.lower()
+        for possible_ext in [".mp4", ".mov", ".avi", ".webm", ".m4v", ".jpg", ".jpeg", ".png", ".webp", ".gif", ".pdf"]:
+            if possible_ext in url_lower:
+                ext = possible_ext
+                break
+        
+        temp_dir = Path("/Users/cmd/galaxycoilszernio/temp_media")
+        temp_dir.mkdir(exist_ok=True)
+        local_path = temp_dir / f"temp_{uuid.uuid4().hex}{ext}"
+        
+        compressed_path = None
+        try:
+            print(f"Downloading remote media for reliability: {url}")
+            with requests.get(url, stream=True, timeout=60) as r:
+                r.raise_for_status()
+                with open(local_path, "wb") as f:
+                    for chunk in r.iter_content(chunk_size=8192):
+                        f.write(chunk)
+            
+            upload_path = local_path
+            # Compress video if applicable to prevent API timeouts on target platforms
+            if ext in [".mp4", ".mov", ".avi", ".webm", ".m4v"]:
+                print(f"Compressing video using ffmpeg to prevent API timeouts...")
+                compressed_path = temp_dir / f"compressed_{uuid.uuid4().hex}.mp4"
+                ffmpeg_cmd = [
+                    "ffmpeg", "-y", "-i", str(local_path),
+                    "-c:v", "libx264", "-preset", "fast", "-crf", "28",
+                    "-vf", "scale='min(1080,iw)':min'(1920,ih)':force_original_aspect_ratio=decrease,pad=ceil(iw/2)*2:ceil(ih/2)*2",
+                    "-c:a", "aac", "-b:a", "128k",
+                    str(compressed_path)
+                ]
+                comp_result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True)
+                if comp_result.returncode == 0 and compressed_path.exists():
+                    print("  ✓ Video compressed successfully.")
+                    upload_path = compressed_path
+                else:
+                    print(f"  ✗ Video compression failed. Proceeding with original file. Error: {comp_result.stderr[-200:] if comp_result.stderr else 'Unknown'}")
+
+            print(f"Uploading file to Zernio CDN: {upload_path}")
+            cmd = [ZERNI0, "media:upload", str(upload_path), "--pretty"]
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            
+            if result.returncode == 0:
+                data = json.loads(result.stdout)
+                zernio_url = data.get("url")
+                if zernio_url:
+                    print(f"  ✓ Remote media uploaded to Zernio CDN: {zernio_url}")
+                    return zernio_url
+            print(f"  ✗ Remote media upload failed with returncode {result.returncode}: {result.stderr}")
+        except Exception as e:
+            print(f"  ✗ Exception during remote media download/upload: {e}")
+        finally:
+            if local_path.exists():
+                local_path.unlink()
+            if compressed_path and compressed_path.exists():
+                compressed_path.unlink()
+                
+    return url
+
+
 def validate_post_content(caption: str, platform: str = "instagram") -> bool:
     text = (caption or "").strip()
     if not text or len(text.split()) < 3:
@@ -35,8 +127,8 @@ def validate_post_content(caption: str, platform: str = "instagram") -> bool:
 
 
 def create_single_post(
-    url: str,
-    caption: str,
+    url: Optional[str] = None,
+    caption: str = "",
     scheduled_at: str = "",
     *,
     account_id: Optional[str] = None,
@@ -74,9 +166,12 @@ def create_single_post(
         ZERNI0, "posts:create",
         "--text", caption,
         "--accounts", accounts_str,
-        "--media", url,
         "--timezone", TIMEZONE,
     ]
+    
+    if url:
+        url = ensure_zernio_media_url(url)
+        cmd.extend(["--media", url])
 
     if has_ig:
         cmd.extend(["--tags", TAGS, "--hashtags", HASHTAGS])

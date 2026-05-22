@@ -2,6 +2,7 @@
 # Enforcing '3-5 Rule' for maximum algorithmic reach.
 
 BRANDED_KEYWORDS = ["#GalaxyCoils"]
+BRANDED = BRANDED_KEYWORDS
 
 DRONE_SEARCH_INTENT = [
     "Best FPV Drone 2026",

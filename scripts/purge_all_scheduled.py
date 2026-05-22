@@ -16,9 +16,11 @@ def run_json(cmd):
     return json.loads(result.stdout)
 
 def main():
-    print("Fetching all scheduled posts...")
-    data = run_json([ZERNI0, "posts:list", "--status", "scheduled", "--limit", "500", "--pretty"])
-    posts = data.get("posts", [])
+    print("Fetching scheduled and partial posts...")
+    posts = []
+    for status in ["scheduled", "partial"]:
+        data = run_json([ZERNI0, "posts:list", "--status", status, "--limit", "500", "--pretty"])
+        posts.extend(data.get("posts", []))
     
     if not posts:
         print("No scheduled posts to purge.")

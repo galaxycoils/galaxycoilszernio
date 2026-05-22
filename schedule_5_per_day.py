@@ -21,7 +21,7 @@ from typing import Dict, List, Tuple
 import requests
 
 from scripts.captions_pool import CTA_CAPTIONS, MICRO_HOOKS, VALUE_CAPTIONS
-from scripts.post_utils import create_post as _create_post, ZERNI0, reply_to_post
+from scripts.post_utils import create_post as _create_post, ZERNI0, reply_to_post, ensure_zernio_media_url
 from scripts.secure_dedup import extract_id, get_all_seen_source_ids, record_scheduled
 from scripts.threads_utils import enrich_for_threads
 from scripts.threads_conversation import generate_first_reply
@@ -51,6 +51,11 @@ QUERY_POOL = [
     "drone ocean",
     "drone forest",
     "golden hour drone",
+    "luxury real estate aerial",
+    "cinematic nature",
+    "drone racing",
+    "aerial cinematography",
+    "fpv freestyle"
 ]
 
 
@@ -71,11 +76,11 @@ def list_scheduled() -> List[dict]:
     return run_json([ZERNI0, "posts:list", "--status", "scheduled", "--limit", "100", "--pretty"]).get("posts", [])
 
 
-def search_pexels(query: str, per_page: int = 30) -> List[dict]:
+def search_pexels(query: str, per_page: int = 80) -> List[dict]:
     response = requests.get(
         "https://api.pexels.com/videos/search",
         headers={"Authorization": PEXELS_API_KEY},
-        params={"query": query, "per_page": per_page},
+        params={"query": query, "per_page": per_page, "orientation": "portrait"},
         timeout=30,
     )
     response.raise_for_status()
@@ -98,8 +103,13 @@ def fetch_unique_urls(limit: int) -> List[str]:
     seen = get_all_seen_source_ids(include_scheduled=True)
     urls = []
     local_ids = set()
-    for query in QUERY_POOL:
+    queries = random.sample(QUERY_POOL, len(QUERY_POOL))
+    for query in queries:
         for video in search_pexels(query):
+            # Enforce maximum duration of 40 seconds if present
+            duration = video.get("duration")
+            if duration is not None and duration > 40:
+                continue
             url = choose_video_url(video)
             video_id = extract_id(url)
             if not video_id or video_id in seen or video_id in local_ids:
@@ -143,7 +153,7 @@ def generate_caption_plan(total: int) -> List[str]:
     plan += random.sample(CTA_CAPTIONS * ((cta_count // len(CTA_CAPTIONS)) + 1), cta_count)
     random.shuffle(plan)
     return plan
-
+    
 
 def open_slots(days_ahead: int = 10) -> List[str]:
     scheduled = list_scheduled()
@@ -168,21 +178,20 @@ def open_slots(days_ahead: int = 10) -> List[str]:
 
 def create_post(url: str, caption: str, scheduled_at: str) -> None:
     video_id = extract_id(url)
-    
-    print(f"Scheduling IG & Threads simultaneously for {scheduled_at}...")
-    ig_caption = f"{caption}\n\n{get_social_seo_tags()}" if caption else get_social_seo_tags()
+    print(f"Scheduling unified cross-platform post for {scheduled_at}...")
+    tags = get_social_seo_tags()
+    ig_caption = f"{caption}\n\n{tags}" if caption else tags
 
-    post_id = _create_post(url, ig_caption, scheduled_at, accounts=[IG_ACCOUNT, THREADS_ACCOUNT])
+    # Resolve Pexels URL to Zernio CDN URL first so we only upload once
+    cdn_url = ensure_zernio_media_url(url)
+
+    # Schedule Unified Post (IG + Threads)
+    post_id = _create_post(cdn_url, ig_caption, scheduled_at, accounts=[IG_ACCOUNT, THREADS_ACCOUNT])
     if post_id:
         if video_id:
             record_scheduled(video_id, url)
-
-        if isinstance(post_id, str):
-            print(f"Adding first reply to Threads post {post_id}...")
-            reply_text = generate_first_reply()
-            reply_to_post(post_id, THREADS_ACCOUNT, reply_text)
     else:
-        raise RuntimeError(f"Failed to create post for {scheduled_at}")
+        raise RuntimeError(f"Failed to create unified post for {scheduled_at}")
 
 
 def main():
@@ -193,9 +202,13 @@ def main():
         "--dry-run", action="store_true",
         help="Preview which slots and captions would be scheduled without creating posts."
     )
+    parser.add_argument(
+        "--days", type=int, default=10,
+        help="Number of days ahead to schedule (default: 10)"
+    )
     args = parser.parse_args()
 
-    slots = open_slots(days_ahead=10)
+    slots = open_slots(days_ahead=args.days)
     if not slots:
         print("No open slots found.")
         return

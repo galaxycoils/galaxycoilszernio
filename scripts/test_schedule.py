@@ -306,13 +306,14 @@ class TestFetchUniqueURLs(unittest.TestCase):
 
     def test_exhaustion_returns_whats_available(self):
         """Query pool exhausted before limit reached."""
+        num_queries = len(schedule_5_per_day.QUERY_POOL)
         with mock.patch("schedule_5_per_day.get_all_seen_source_ids", return_value=set()), \
              mock.patch("schedule_5_per_day.requests.get",
-                        # Return just 1 video per query, 8 queries total → 8 unique
-                        side_effect=[_pexels_response(i) for i in range(100, 108)]):
+                         # Return just 1 video per query, num_queries queries total → num_queries unique
+                         side_effect=[_pexels_response(i) for i in range(100, 100 + num_queries)]):
             urls = schedule_5_per_day.fetch_unique_urls(limit=20)
 
-        self.assertEqual(len(urls), 8)  # QUERY_POOL has 8 entries
+        self.assertEqual(len(urls), num_queries)  # QUERY_POOL has num_queries entries
 
     def test_urls_in_correct_format(self):
         with mock.patch("schedule_5_per_day.get_all_seen_source_ids", return_value=set()), \

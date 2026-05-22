@@ -11,7 +11,7 @@ from typing import Dict, List, Tuple
 import requests
 
 from scripts.captions_pool import CTA_CAPTIONS, MICRO_HOOKS, VALUE_CAPTIONS, GENERIC_HOOKS
-from scripts.post_utils import create_single_post as create_post, ZERNI0, reply_to_post
+from scripts.post_utils import create_single_post as create_post, ZERNI0, reply_to_post, ensure_zernio_media_url
 from scripts.secure_dedup import extract_id, get_all_seen_source_ids, record_scheduled, is_blacklisted
 from scripts.threads_utils import enrich_for_threads
 from scripts.threads_conversation import generate_first_reply
@@ -44,7 +44,7 @@ def search_pexels(query: str, per_page: int = 40) -> List[dict]:
     response = requests.get(
         "https://api.pexels.com/videos/search",
         headers={"Authorization": PEXELS_API_KEY},
-        params={"query": query, "per_page": per_page},
+        params={"query": query, "per_page": per_page, "orientation": "portrait"},
         timeout=30,
     )
     response.raise_for_status()
@@ -70,6 +70,10 @@ def fetch_unique_urls(limit: int) -> List[str]:
     for query in queries:
         videos = search_pexels(query)
         for video in videos:
+            # Enforce maximum duration of 40 seconds if present
+            duration = video.get("duration")
+            if duration is not None and duration > 40:
+                continue
             url = choose_video_url(video)
             video_id = extract_id(url)
             
@@ -120,9 +124,13 @@ def open_slots(days_ahead: int = 7) -> List[str]:
 def main():
     parser = argparse.ArgumentParser(description="Schedule 10 posts/day on IG + Threads")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument(
+        "--days", type=int, default=7,
+        help="Number of days ahead to schedule (default: 7)"
+    )
     args = parser.parse_args()
 
-    slots = open_slots(days_ahead=7)
+    slots = open_slots(days_ahead=args.days)
     if not slots:
         print("No open slots found.")
         return
@@ -144,19 +152,26 @@ def main():
     for scheduled_at, url, caption in zip(slots, urls, captions):
         video_id = extract_id(url)
         
-        print(f"Scheduling IG & Threads simultaneously for {scheduled_at}...")
+        print(f"Scheduling IG (video) and Threads (with media via CDN) separately for {scheduled_at}...")
         from scripts.rebuild_viral_queue import get_social_seo_tags
-        ig_caption = f"{caption}\n\n{get_social_seo_tags()}" if caption else get_social_seo_tags()
+        import uuid
+        tags = get_social_seo_tags()
+        ig_caption = f"{caption}\n\n{tags}" if caption else tags
+        unique_id = uuid.uuid4().hex[:6]
+        threads_caption = f"{caption}\n\n{tags}" if caption else f"Rate this 1-10! 👇 [{unique_id}]\n\n{tags}"
 
-        post_id = create_post(url, ig_caption, scheduled_at, accounts=[IG_ACCOUNT, THREADS_ACCOUNT])
-        if post_id:
+        # Resolve Pexels URL to Zernio CDN URL first so we only upload once
+        cdn_url = ensure_zernio_media_url(url)
+
+        # 1. Schedule Instagram Post (with video)
+        ig_post_id = create_post(cdn_url, ig_caption, scheduled_at, accounts=[IG_ACCOUNT])
+        if ig_post_id:
             if video_id:
                 record_scheduled(video_id, url)
 
-            if isinstance(post_id, str):
-                print(f"Adding first reply to Threads post {post_id}...")
-                reply_text = generate_first_reply()
-                reply_to_post(post_id, THREADS_ACCOUNT, reply_text)
+            # 2. Schedule Threads Post (with video!)
+            create_post(cdn_url, threads_caption, scheduled_at, accounts=[THREADS_ACCOUNT])
+            # Threads scheduled text replies via Zernio fail with 400 error, so we skip reply_to_post here.
         
         time.sleep(10) # Safety buffer
 
