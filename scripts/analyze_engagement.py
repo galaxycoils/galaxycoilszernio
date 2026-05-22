@@ -2,12 +2,23 @@ import os
 import subprocess
 import json
 import re
+import shutil
+
+def _resolve_zernio() -> str:
+    path = shutil.which("zernio") or os.environ.get("ZERNIO_PATH")
+    if path:
+        return path
+    default_path = "/Users/cmd/.npm-global/bin/zernio"
+    if os.path.exists(default_path):
+        return default_path
+    return "zernio"
 
 def analyze():
     os.makedirs('logs', exist_ok=True)
     
+    zernio_path = _resolve_zernio()
     try:
-        result = subprocess.run(['zernio', 'analytics:posts', '--limit', '100'], capture_output=True, text=True, check=True)
+        result = subprocess.run([zernio_path, 'analytics:posts', '--limit', '100'], capture_output=True, text=True, check=True)
         data = json.loads(result.stdout)
     except Exception as e:
         print(f"Error running zernio analytics:posts: {e}")
