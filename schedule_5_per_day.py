@@ -218,7 +218,10 @@ def main():
 
     urls = fetch_unique_urls(limit=len(slots))
     if len(urls) < len(slots):
-        raise RuntimeError(f"Only found {len(urls)} unique videos for {len(slots)} slots")
+        print(f"Warning: Only found {len(urls)} videos for {len(slots)} slots.")
+        slots = slots[:len(urls)]
+        captions = captions[:len(urls)]
+
     for scheduled_at, url, caption in zip(slots, urls, captions):
         create_post(url, caption, scheduled_at)
         time.sleep(5)
