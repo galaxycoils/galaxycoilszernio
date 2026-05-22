@@ -1,77 +1,67 @@
-# GalaxyCoils Zernio — Project Wiki
-
-> [!info] Overview
-> Automated social media scheduling pipeline for GalaxyCoils Instagram. Uses Pexels drone footage, Zernio CLI for post management, and a multi-layered dedup system.
-
+---
+tags: [wiki, documentation, reference, galaxycoils]
+last-updated: 2026-05-22
 ---
 
-## Architecture
+# WIKI
 
-```mermaid
-graph TD
-    A[schedule_5_per_day.py] --> B[secure_dedup.py]
-    C[fill_schedule_gaps.py] --> A
-    D[purge_zernio_duplicates.py] --> B
-    E[update_empty_posts.py] --> F[post_utils.py]
-    G[verify_queue.py] --> H[Zernio API]
-    B --> I[history.log]
-    A --> I
-    D --> I
-```
+> [!info] Project wiki for GalaxyCoils Zernio.
 
-## Core Scripts
+## Quick Links
+- [[GalaxyCoils Zernio]] — Main repo architecture, scripts inventory, and unified dual-posting setup
+- [[GalaxyCoils Memory]] — Centralized keys, branch protections, and design decisions
+- [[Zernio CLI Learnings]] — CLI quirks, platform-specific observations
+- [[Queue State]] — Current scheduled state, dynamic caption weights, queue metrics
+- [[Instagram-Automation]] — Automation rules, recovery guides, platform limitations
 
-| Script | Purpose | Flags |
+## Repo & CI
+- Public repo: github.com/galaxycoils/galaxycoilszernio
+- Branch protection: audit check required, strict:false, enforce admins
+- Ruleset: Require CI to pass (ID 16669655)
+- Pre-push hook: make full-audit
+- GitHub Actions CI: Python 3.12, push/PR to master
+
+## Security
+- PEXELS_API_KEY in .env (auto-loaded, gitignored)
+- No hardcoded keys
+
+## Scripts Inventory (23 .py files)
+| File | Purpose |
+|---|---|
+| schedule_5_per_day.py | Main scheduler (Instagram & Threads unified dual-posting, dynamic caption weights) |
+| schedule_10_per_day.py | Alternate scheduler for high-volume posting (IG + Threads unified dual-posting) |
+| fill_schedule_gaps.py | Gap filler |
+| purge_zernio_duplicates.py | Duplicate purger |
+| scripts/captions_pool.py | Shared caption constants |
+| scripts/hashtags_pool.py | Shared hashtag pools for Social SEO |
+| scripts/secure_dedup.py | Central deduplication (history.log, API records) |
+| scripts/post_utils.py | Zernio interaction utilities |
+| scripts/threads_utils.py | Threads caption enrichment and tags management |
+| scripts/threads_conversation.py | Companion first reply generation |
+| scripts/verify_queue.py | Queue audit |
+| scripts/rebuild_viral_queue.py | Queue rebuild tool |
+| scripts/update_empty_posts.py | Empty post fixer |
+| scripts/unify_scheduled_queue.py | Migration script to unify Instagram and Threads scheduled queues |
+| scripts/health_monitor.py | Health check and pre-push validations |
+| scripts/optimize_engagement.py | Updates caption mix weights based on performance metrics |
+| scripts/analyze_engagement.py | Analyzes performance metrics to identify top-performing posts |
+| scripts/purge_all_scheduled.py | Queue purge tool |
+| scripts/recover_rebuild.py | Queue recovery |
+| scripts/recover_virality.py | Virality restoration |
+| scripts/batch_recover.py | Batch recovery |
+| scripts/chunk_recover.py | Chunk recovery |
+| scripts/__init__.py | Package init |
+
+## Test Suites
+| Suite | Purpose | Tests |
 |---|---|---|
-| `schedule_5_per_day.py` | Schedule 5 posts/day at 10/13/16/19/22 UTC | `--dry-run`, `--help` |
-| `fill_schedule_gaps.py` | Fill up to 10 open schedule slots | `--dry-run`, `--help` |
-| `purge_zernio_duplicates.py` | Delete duplicate scheduled posts | `--dry-run`, `--help` |
-| `update_empty_posts.py` | Fix empty-caption posts | `--dry-run`, `--min-empty N` |
-| `verify_queue.py` | Queue health: totals, per-day, duplicates | (none) |
+| test_secure_dedup | Deduplication safety | 18 |
+| test_post_utils | Zernio CLI wrappers | 17 |
+| test_purge_dedup | Duplicate purging logic | 10 |
+| test_fill_gaps | Gap filling verification | 8 |
+| test_schedule | Scheduling slot assignments & dynamic weights | 24 |
+| test_optimize_engagement | Weight calculation and classification logic | 8 |
+| Total | | 85 |
 
-## Testing
-
-| Suite | Tests | Coverage |
-|---|---|---|
-| `test_secure_dedup` | 18 | `load_history`, `extract_id`, `record_scheduled` |
-| `test_post_utils` | 15 | `create_post`: draft, scheduled, ValueError, retry |
-| `test_purge_dedup` | 10 | Dedup: oldest-first, intra-queue, history, dry-run |
-| `test_fill_gaps` | 8 | Gap fill: no-slots, dry-run, success, cap, RuntimeError |
-| `test_schedule` | 27 | `choose_video_url`, `generate_caption_plan`, `open_slots`, `fetch_unique_urls` |
-| **Total** | **78** | |
-
-## CI/CD Pipeline
-
-- **Public repo** — `github.com/galaxycoils/galaxycoilszernio`
-- **`.git/hooks/pre-push`** → Runs `make full-audit` before every push
-- **`.github/workflows/ci.yml`** → GitHub Actions on push/PR to master (Python 3.12)
-- **Branch protection** → `audit` status check required, strict mode, enforce admins
-- **Ruleset** → `Require CI to pass` (ID 16667526), active on `refs/heads/master`
-
-## Quick Reference
-
-```bash
-make help              # Show all commands
-make schedule          # Schedule 5 posts/day
-make schedule-dry      # Preview scheduling
-make verify            # Queue health check
-make test              # Run all 78 tests
-make full-audit        # Syntax + verify + 78 tests
-make dedup-dry         # Preview duplicates
-make empties-dry       # Preview empty captions (threshold 3)
-```
-
-## Design Decisions
-
-- **history.log** is the canonical source of truth for seen Pexels IDs
-- **53% empty captions** are intentional — part of `generate_caption_plan()`'s content mix
-- **`--min-empty 3`** tolerates the ~3 intended empty posts from the caption plan
-- **`purge_zernio_duplicates.py`** uses `load_history()` only (not published posts) to avoid false positives
-- **`.env`** stores `PEXELS_API_KEY` (auto-loaded at startup, excluded via `.gitignore`)
-- No hardcoded secrets in any source file
-
-## See Also
-
-- [[GalaxyCoils Memory]] — Persistent project memory
-- [[Zernio CLI Learnings]] — Zernio API quirks and patterns
-- [[Queue State]] — Current queue health snapshot
+## Quick Commands
+`make help`, `make schedule`, `make test`, `make full-audit`, `make dedup-dry`, `make empties-dry`

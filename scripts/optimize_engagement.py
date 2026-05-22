@@ -17,7 +17,7 @@ def _resolve_zernio() -> str:
     default_path = "/Users/cmd/.npm-global/bin/zernio"
     if os.path.exists(default_path):
         return default_path
-    return ""
+    return "zernio"
 
 ZERNI0 = _resolve_zernio()
 WEIGHTS_FILE = "/Users/cmd/galaxycoilszernio/logs/engagement_weights.json"

@@ -7,12 +7,12 @@
 #  make fill-gaps-dry  Preview gap-fill without creating
 #  make verify         Full queue health check
 #  make audit          Syntax-check all 17 .py files + verify queue
-#  make test           Run all 78 unit tests
+#  make test           Run all 85 unit tests
 #  make test-secure    Run secure_dedup tests (18)
-#  make test-post      Run post_utils tests (15)
+#  make test-post      Run post_utils tests (17)
 #  make test-purge     Run purge_dedup tests (10)
 #  make test-gaps      Run fill_gaps tests (8)
-#  make test-schedule  Run schedule tests (27)
+#  make test-schedule  Run schedule tests (24)
 #  make dedup-dry      Preview duplicate posts
 #  make dedup          Delete duplicate scheduled posts
 #  make empties-dry    Preview empty-caption posts
@@ -89,7 +89,8 @@ test:
 	                       scripts.test_post_utils \
 	                       scripts.test_purge_dedup \
 	                       scripts.test_fill_gaps \
-	                       scripts.test_schedule -v
+	                       scripts.test_schedule \
+	                       scripts.test_optimize_engagement -v
 
 test-secure:
 	python3 -m unittest scripts.test_secure_dedup -v
@@ -105,6 +106,9 @@ test-gaps:
 
 test-schedule:
 	python3 -m unittest scripts.test_schedule -v
+
+test-optimize:
+	python3 -m unittest scripts.test_optimize_engagement -v
 
 # ── Full Audit ─────────────────────────────────────────────────
 
@@ -132,14 +136,15 @@ help:
 	@echo "  make empties          Fix empty-caption posts (threshold 3)"
 	@echo ""
 	@echo "Testing:"
-	@echo "  make test             Run all 78 unit tests"
+	@echo "  make test             Run all 85 unit tests"
 	@echo "  make test-secure      secure_dedup tests (18)"
-	@echo "  make test-post        post_utils tests (15)"
+	@echo "  make test-post        post_utils tests (17)"
 	@echo "  make test-purge       purge_dedup tests (10)"
 	@echo "  make test-gaps        fill_gaps tests (8)"
-	@echo "  make test-schedule    schedule_5_per_day tests (27)"
+	@echo "  make test-schedule    schedule tests (24)"
+	@echo "  make test-optimize    optimize_engagement tests (8)"
 	@echo ""
 	@echo "Full Audit:"
-	@echo "  make full-audit       Syntax + verify + all 78 tests"
+	@echo "  make full-audit       Syntax + verify + all 85 tests"
 	@echo ""
 	@echo "See MEMORY.md for architecture details and current queue state."
