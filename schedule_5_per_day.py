@@ -169,25 +169,18 @@ def open_slots(days_ahead: int = 10) -> List[str]:
 def create_post(url: str, caption: str, scheduled_at: str) -> None:
     video_id = extract_id(url)
     
-    # 1. Instagram Post
-    print(f"Scheduling IG for {scheduled_at}...")
+    print(f"Scheduling IG & Threads simultaneously for {scheduled_at}...")
     ig_caption = f"{caption}\n\n{get_social_seo_tags()}" if caption else get_social_seo_tags()
 
-    # 2. Threads Post (Enriched)
-    print(f"Scheduling Threads for {scheduled_at}...")
-    threads_caption = enrich_for_threads(caption)
-    
-    # ATOMIC UNIT: Attempt both, but verify IG success before Threads
-    ig_success = _create_post(url, ig_caption, scheduled_at, account_id=IG_ACCOUNT)
-    if ig_success:
+    post_id = _create_post(url, ig_caption, scheduled_at, accounts=[IG_ACCOUNT, THREADS_ACCOUNT])
+    if post_id:
         if video_id:
             record_scheduled(video_id, url)
 
-        threads_post_id = _create_post(url, threads_caption, scheduled_at, account_id=THREADS_ACCOUNT)
-        if isinstance(threads_post_id, str):
-            print(f"Adding first reply to Threads post {threads_post_id}...")
+        if isinstance(post_id, str):
+            print(f"Adding first reply to Threads post {post_id}...")
             reply_text = generate_first_reply()
-            reply_to_post(threads_post_id, THREADS_ACCOUNT, reply_text)
+            reply_to_post(post_id, THREADS_ACCOUNT, reply_text)
     else:
         raise RuntimeError(f"Failed to create post for {scheduled_at}")
 

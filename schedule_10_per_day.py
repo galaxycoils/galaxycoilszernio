@@ -144,27 +144,19 @@ def main():
     for scheduled_at, url, caption in zip(slots, urls, captions):
         video_id = extract_id(url)
         
-        # 1. Instagram Post
-        print(f"Scheduling IG for {scheduled_at}...")
+        print(f"Scheduling IG & Threads simultaneously for {scheduled_at}...")
         from scripts.rebuild_viral_queue import get_social_seo_tags
-        ig_caption = f"{caption}\n\n{get_social_seo_tags()}"
+        ig_caption = f"{caption}\n\n{get_social_seo_tags()}" if caption else get_social_seo_tags()
 
-        # 2. Threads Post (Enriched)
-        print(f"Scheduling Threads for {scheduled_at}...")
-        threads_caption = enrich_for_threads(caption)
-        
-        # ATOMIC UNIT: Attempt both, but verify IG success before Threads
-        # In Virality V7, we pass both accounts as a list to post_utils if possible, 
-        # but here we use the loops for logging and custom Threads enrichment.
-        if create_post(url, ig_caption, scheduled_at, account_id=IG_ACCOUNT):
+        post_id = create_post(url, ig_caption, scheduled_at, accounts=[IG_ACCOUNT, THREADS_ACCOUNT])
+        if post_id:
             if video_id:
                 record_scheduled(video_id, url)
 
-            threads_post_id = create_post(url, threads_caption, scheduled_at, account_id=THREADS_ACCOUNT)
-            if isinstance(threads_post_id, str):
-                print(f"Adding first reply to Threads post {threads_post_id}...")
+            if isinstance(post_id, str):
+                print(f"Adding first reply to Threads post {post_id}...")
                 reply_text = generate_first_reply()
-                reply_to_post(threads_post_id, THREADS_ACCOUNT, reply_text)
+                reply_to_post(post_id, THREADS_ACCOUNT, reply_text)
         
         time.sleep(10) # Safety buffer
 

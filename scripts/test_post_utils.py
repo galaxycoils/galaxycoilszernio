@@ -68,6 +68,16 @@ class TestCommandConstruction(unittest.TestCase):
         cmd = self._call_args()
         self.assertIn("6a0afc8a5e333c0529912a50", cmd)
 
+    def test_multiple_accounts_passed_as_list(self):
+        create_post(SAMPLE_URL, SAMPLE_CAPTION, draft=True, accounts=["acct1", "acct2"])
+        cmd = self._call_args()
+        self.assertIn("acct1,acct2", cmd)
+
+    def test_multiple_accounts_passed_as_comma_separated_string(self):
+        create_post(SAMPLE_URL, SAMPLE_CAPTION, draft=True, accounts="acct1, acct2")
+        cmd = self._call_args()
+        self.assertIn("acct1,acct2", cmd)
+
     def test_media_and_text_included(self):
         create_post(SAMPLE_URL, SAMPLE_CAPTION, draft=True)
         cmd = self._call_args()

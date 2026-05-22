@@ -45,33 +45,40 @@ def create_single_post(
     max_retries: int = 3,
 ) -> str | bool:
     """
-    Create a single zernio post for one account.
+    Create a single zernio post for one or more accounts.
     Returns post_id string on success, False on failure.
     """
-    if account_id is None:
-        if accounts:
-            if isinstance(accounts, list):
-                account_id = accounts[0] if accounts else ACCOUNT_ID
-            else:
-                account_id = accounts
+    if accounts is None:
+        if account_id:
+            accounts = [account_id]
         else:
-            account_id = ACCOUNT_ID
+            accounts = [ACCOUNT_ID]
+    elif isinstance(accounts, str):
+        accounts = [a.strip() for a in accounts.split(",") if a.strip()]
+    elif not isinstance(accounts, list):
+        accounts = list(accounts)
 
-    platform = "threads" if account_id == "6a0f83d7520992756d97578f" else "instagram"
+    accounts_str = ",".join(accounts)
 
-    if not validate_post_content(caption, platform):
-        print(f"ERROR: Caption validation failed for {platform}: '{caption[:60]}'")
+    has_threads = "6a0f83d7520992756d97578f" in accounts
+    has_ig = any(a != "6a0f83d7520992756d97578f" for a in accounts)
+
+    target_platform = "instagram" if has_ig else "threads"
+    target_desc = "+".join(["threads" if a == "6a0f83d7520992756d97578f" else "instagram" for a in accounts])
+
+    if not validate_post_content(caption, target_platform):
+        print(f"ERROR: Caption validation failed for {target_platform}: '{caption[:60]}'")
         return False
 
     cmd = [
         ZERNI0, "posts:create",
         "--text", caption,
-        "--accounts", account_id,
+        "--accounts", accounts_str,
         "--media", url,
         "--timezone", TIMEZONE,
     ]
 
-    if platform == "instagram":
+    if has_ig:
         cmd.extend(["--tags", TAGS, "--hashtags", HASHTAGS])
 
     if draft:
@@ -96,11 +103,11 @@ def create_single_post(
                     data = json.loads(stdout_str)
                     post_id = data.get("post", {}).get("id") or data.get("post", {}).get("_id") or data.get("id") or data.get("_id")
                     if post_id:
-                        print(f"  ✓ {platform} post created: {post_id}")
+                        print(f"  ✓ {target_desc} post created: {post_id}")
                         return post_id
                 except Exception:
                     # Fallback if JSON parsing fails but returncode was 0
-                    print(f"  ✓ {platform} post created (fallback)")
+                    print(f"  ✓ {target_desc} post created (fallback)")
                     return True
             except Exception as e:
                 print(f"  ✗ Exception in success check: {e}")
@@ -118,17 +125,17 @@ def create_single_post(
 
         if is_429:
             wait = 60 * attempt
-            print(f"  ⟳ Rate limited (429) {platform} attempt {attempt}/{max_retries}, retry in {wait}s")
+            print(f"  ⟳ Rate limited (429) {target_desc} attempt {attempt}/{max_retries}, retry in {wait}s")
             time.sleep(wait)
         elif is_500:
             wait = 10 * attempt
-            print(f"  ⟳ Server error (500) {platform} attempt {attempt}/{max_retries}, retry in {wait}s")
+            print(f"  ⟳ Server error (500) {target_desc} attempt {attempt}/{max_retries}, retry in {wait}s")
             time.sleep(wait)
         else:
-            print(f"  ✗ Non-retryable error {platform}: {raw[:300]}")
+            print(f"  ✗ Non-retryable error {target_desc}: {raw[:300]}")
             return False
 
-    print(f"  ✗ Max retries ({max_retries}) exceeded for {platform}")
+    print(f"  ✗ Max retries ({max_retries}) exceeded for {target_desc}")
     return False
 
 
