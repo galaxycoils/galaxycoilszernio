@@ -8,7 +8,19 @@ import os
 import subprocess
 import requests
 import sys
+from pathlib import Path
 from typing import Tuple
+
+# Load .env file if it exists
+_dotenv_path = Path(__file__).resolve().parent.parent / ".env"
+if _dotenv_path.is_file():
+    with open(_dotenv_path) as _f:
+        for _line in _f:
+            _line = _line.strip()
+            if _line and not _line.startswith("#") and "=" in _line:
+                _key, _val = _line.split("=", 1)
+                if _key not in os.environ:
+                    os.environ[_key] = _val
 
 # Configuration
 PEXELS_API_KEY = os.getenv("PEXELS_API_KEY")
