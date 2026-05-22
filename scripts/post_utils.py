@@ -6,9 +6,20 @@ from __future__ import annotations
 import subprocess
 import time
 import json
+import os
+import shutil
 from typing import Optional
 
-ZERNI0 = "/Users/cmd/.npm-global/bin/zernio"
+def _resolve_zernio() -> str:
+    path = shutil.which("zernio") or os.environ.get("ZERNIO_PATH")
+    if path:
+        return path
+    default_path = "/Users/cmd/.npm-global/bin/zernio"
+    if os.path.exists(default_path):
+        return default_path
+    return ""
+
+ZERNI0 = _resolve_zernio()
 ACCOUNT_ID = "6a0afc8a5e333c0529912a50"
 
 TAGS = "drone,fpv,cinematic,aerial,dronevideo,fpvlife,cinematography,dronelife,aerialvideography,viral"

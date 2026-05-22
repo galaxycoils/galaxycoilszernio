@@ -47,10 +47,13 @@ QUERY_POOL = [
     "drone forest",
     "golden hour drone",
 ]
-# Caption pools imported from scripts.captions_pool (engagement pivot: 30/30/22/18)
+
+
+WEIGHTS_FILE = Path("/Users/cmd/galaxycoilszernio/logs/engagement_weights.json")
 
 
 def run_json(cmd: List[str]) -> dict:
+
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
         raise RuntimeError(result.stderr or result.stdout)
@@ -58,6 +61,8 @@ def run_json(cmd: List[str]) -> dict:
 
 
 def list_scheduled() -> List[dict]:
+    if not ZERNI0:
+        return []
     return run_json([ZERNI0, "posts:list", "--status", "scheduled", "--limit", "100", "--pretty"]).get("posts", [])
 
 
@@ -102,11 +107,31 @@ def fetch_unique_urls(limit: int) -> List[str]:
 
 
 def generate_caption_plan(total: int) -> List[str]:
-    # Engagement pivot (2026-05-20): 30% CTA / 30% Empty / 22% Micro / 18% Value
-    empty_count = round(total * 0.30)
-    micro_count = round(total * 0.22)
-    value_count = round(total * 0.18)
-    cta_count = total - empty_count - micro_count - value_count
+    # Default engagement pivot: 30% CTA / 30% Empty / 22% Micro / 18% Value
+    weights = {"empty": 0.30, "micro": 0.22, "value": 0.18, "cta": 0.30}
+    weights_file = WEIGHTS_FILE
+    
+    if weights_file.is_file():
+        try:
+            with open(weights_file, "r") as f:
+                loaded = json.load(f)
+                if all(k in loaded for k in ["empty", "micro", "value", "cta"]):
+                    weights = loaded
+                    print(f"Loaded dynamic engagement weights: {weights}")
+        except Exception as e:
+            print(f"Warning: Failed to load dynamic weights, using default. Error: {e}")
+
+    empty_count = max(0, round(total * weights.get("empty", 0.30)))
+    micro_count = max(0, round(total * weights.get("micro", 0.22)))
+    value_count = max(0, round(total * weights.get("value", 0.18)))
+    cta_count = max(0, total - empty_count - micro_count - value_count)
+    
+    # Adjust total discrepancy
+    current_total = empty_count + micro_count + value_count + cta_count
+    if current_total != total:
+        diff = total - current_total
+        cta_count = max(0, cta_count + diff)
+
     plan = [""] * empty_count
     plan += random.sample(MICRO_HOOKS * ((micro_count // len(MICRO_HOOKS)) + 1), micro_count)
     plan += random.sample(VALUE_CAPTIONS * ((value_count // len(VALUE_CAPTIONS)) + 1), value_count)

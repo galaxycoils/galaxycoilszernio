@@ -16,7 +16,10 @@ __pycache__/
 backups/
 
 # Session logs
-logs/
+logs/*
+!logs/engagement_weights.json
+
+
 
 # Hermes planning artifacts
 .hermes/

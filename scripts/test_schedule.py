@@ -87,6 +87,13 @@ class TestChooseVideoURL(unittest.TestCase):
 # generate_caption_plan
 # ═══════════════════════════════════════════════════════════════
 class TestGenerateCaptionPlan(unittest.TestCase):
+    def setUp(self):
+        self.original_weights_file = schedule_5_per_day.WEIGHTS_FILE
+        schedule_5_per_day.WEIGHTS_FILE = Path("nonexistent_test_weights.json")
+
+    def tearDown(self):
+        schedule_5_per_day.WEIGHTS_FILE = self.original_weights_file
+
     def test_zero_total(self):
         self.assertEqual(schedule_5_per_day.generate_caption_plan(0), [])
 
@@ -135,6 +142,21 @@ class TestGenerateCaptionPlan(unittest.TestCase):
         self.assertAlmostEqual(micro, 220, delta=5)
         self.assertAlmostEqual(value, 180, delta=5)
         self.assertAlmostEqual(cta,   300, delta=5)
+
+    @mock.patch("builtins.open", new_callable=mock.mock_open, read_data='{"empty": 0.10, "micro": 0.40, "value": 0.40, "cta": 0.10}')
+    @mock.patch("pathlib.Path.is_file", return_value=True)
+    def test_dynamic_weights_loading(self, mock_is_file, mock_open):
+        plan = schedule_5_per_day.generate_caption_plan(10)
+        empty = sum(1 for c in plan if c == "")
+        micro = sum(1 for c in plan if c in schedule_5_per_day.MICRO_HOOKS)
+        value = sum(1 for c in plan if c in schedule_5_per_day.VALUE_CAPTIONS)
+        cta = sum(1 for c in plan if c in schedule_5_per_day.CTA_CAPTIONS)
+        
+        self.assertEqual(empty, 1)
+        self.assertEqual(micro, 4)
+        self.assertEqual(value, 4)
+        self.assertEqual(cta, 1)
+
 
 
 # ═══════════════════════════════════════════════════════════════

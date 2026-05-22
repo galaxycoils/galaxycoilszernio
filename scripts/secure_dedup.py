@@ -9,7 +9,16 @@ from typing import Iterable, List, Optional, Set
 BASE_DIR = "/Users/cmd/galaxycoilszernio"
 HISTORY_FILE = f"{BASE_DIR}/history.log"
 GLOBAL_BLACKLIST = f"{BASE_DIR}/logs/global_video_blacklist.json"
-ZERNI0 = "/Users/cmd/.npm-global/bin/zernio"
+def _resolve_zernio() -> str:
+    path = shutil.which("zernio") or os.environ.get("ZERNIO_PATH")
+    if path:
+        return path
+    default_path = "/Users/cmd/.npm-global/bin/zernio"
+    if os.path.exists(default_path):
+        return default_path
+    return ""
+
+ZERNI0 = _resolve_zernio()
 
 def load_blacklist() -> Set[str]:
     if not os.path.exists(GLOBAL_BLACKLIST):
