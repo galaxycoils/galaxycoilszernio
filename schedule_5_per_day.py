@@ -21,8 +21,11 @@ from typing import Dict, List, Tuple
 import requests
 
 from scripts.captions_pool import CTA_CAPTIONS, MICRO_HOOKS, VALUE_CAPTIONS
-from scripts.post_utils import create_post as _create_post, ZERNI0
+from scripts.post_utils import create_post as _create_post, ZERNI0, reply_to_post
 from scripts.secure_dedup import extract_id, get_all_seen_source_ids, record_scheduled
+from scripts.threads_utils import enrich_for_threads
+from scripts.threads_conversation import generate_first_reply
+from scripts.rebuild_viral_queue import get_social_seo_tags
 
 # Load .env file if it exists (so the .env file at project root is picked up automatically)
 _dotenv_path = Path(__file__).resolve().parent / ".env"
@@ -36,6 +39,8 @@ if _dotenv_path.is_file():
                     os.environ[_key] = _val
 
 PEXELS_API_KEY = os.getenv("PEXELS_API_KEY")
+IG_ACCOUNT = "6a0afc8a5e333c0529912a50"
+THREADS_ACCOUNT = "6a0f83d7520992756d97578f"
 SLOTS = [10, 13, 16, 19, 22]
 QUERY_POOL = [
     "drone cinematic",
@@ -142,7 +147,13 @@ def generate_caption_plan(total: int) -> List[str]:
 
 def open_slots(days_ahead: int = 10) -> List[str]:
     scheduled = list_scheduled()
-    occupied = {p.get("scheduledFor") for p in scheduled}
+    occupied = set()
+    for p in scheduled:
+        sf = p.get("scheduledFor")
+        if sf:
+            platforms = p.get("platforms")
+            if not platforms or platforms[0].get("accountId") == IG_ACCOUNT:
+                occupied.add(sf)
     start = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
     slots = []
     for day_offset in range(days_ahead + 1):
@@ -156,10 +167,27 @@ def open_slots(days_ahead: int = 10) -> List[str]:
 
 
 def create_post(url: str, caption: str, scheduled_at: str) -> None:
-    if _create_post(url, caption, scheduled_at):
-        video_id = extract_id(url)
+    video_id = extract_id(url)
+    
+    # 1. Instagram Post
+    print(f"Scheduling IG for {scheduled_at}...")
+    ig_caption = f"{caption}\n\n{get_social_seo_tags()}" if caption else get_social_seo_tags()
+
+    # 2. Threads Post (Enriched)
+    print(f"Scheduling Threads for {scheduled_at}...")
+    threads_caption = enrich_for_threads(caption)
+    
+    # ATOMIC UNIT: Attempt both, but verify IG success before Threads
+    ig_success = _create_post(url, ig_caption, scheduled_at, account_id=IG_ACCOUNT)
+    if ig_success:
         if video_id:
-            record_scheduled(video_id)
+            record_scheduled(video_id, url)
+
+        threads_post_id = _create_post(url, threads_caption, scheduled_at, account_id=THREADS_ACCOUNT)
+        if isinstance(threads_post_id, str):
+            print(f"Adding first reply to Threads post {threads_post_id}...")
+            reply_text = generate_first_reply()
+            reply_to_post(threads_post_id, THREADS_ACCOUNT, reply_text)
     else:
         raise RuntimeError(f"Failed to create post for {scheduled_at}")
 
