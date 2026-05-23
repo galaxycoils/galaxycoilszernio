@@ -21,10 +21,8 @@ from typing import Dict, List, Tuple
 import requests
 
 from scripts.captions_pool import CTA_CAPTIONS, MICRO_HOOKS, VALUE_CAPTIONS
-from scripts.post_utils import create_paired_posts, ZERNI0
+from scripts.post_utils import schedule_paired_cross_platform_post, ZERNI0
 from scripts.secure_dedup import extract_id, get_all_seen_source_ids, record_scheduled
-from scripts.threads_utils import build_threads_caption
-from scripts.rebuild_viral_queue import get_social_seo_tags
 
 # Load .env file if it exists (so the .env file at project root is picked up automatically)
 _dotenv_path = Path(__file__).resolve().parent / ".env"
@@ -178,15 +176,11 @@ def open_slots(days_ahead: int = 10) -> List[str]:
 def create_post(url: str, caption: str, scheduled_at: str) -> None:
     video_id = extract_id(url)
     print(f"Scheduling IG + Threads (separate captions) for {scheduled_at}...")
-    tags = get_social_seo_tags()
-    ig_caption = f"{caption}\n\n{tags}" if caption else tags
-    threads_caption = build_threads_caption(caption)
 
-    ig_post_id, threads_post_id = create_paired_posts(
+    ig_post_id, threads_post_id = schedule_paired_cross_platform_post(
         url,
-        ig_caption,
-        threads_caption,
         scheduled_at,
+        base_caption=caption,
         ig_account=IG_ACCOUNT,
         threads_account=THREADS_ACCOUNT,
         require_threads=False,

@@ -27,10 +27,10 @@ from scripts.post_utils import (
     IG_ACCOUNT_ID,
     THREADS_ACCOUNT_ID,
     ZERNI0,
-    create_paired_posts,
+    prepare_paired_captions,
+    schedule_paired_cross_platform_post,
 )
 from scripts.secure_dedup import fetch_posts
-from scripts.threads_utils import build_threads_caption, strip_ig_seo_block
 
 BACKUP_DIR = Path("/Users/cmd/galaxycoilszernio/backups")
 
@@ -75,9 +75,7 @@ def migrate_post(post: dict, *, execute: bool) -> dict:
     content = post.get("content") or ""
     cdn_url = media_url_for(post)
 
-    base = strip_ig_seo_block(content)
-    threads_caption = build_threads_caption(base)
-    ig_caption = content
+    ig_caption, threads_caption = prepare_paired_captions("", ig_caption=content)
 
     result = {
         "post_id": post_id,
@@ -100,11 +98,10 @@ def migrate_post(post: dict, *, execute: bool) -> dict:
         result["status"] = "would_migrate"
         return result
 
-    ig_id, threads_id = create_paired_posts(
+    ig_id, threads_id = schedule_paired_cross_platform_post(
         None,
-        ig_caption,
-        threads_caption,
         scheduled_at,
+        ig_caption=content,
         ig_account=IG_ACCOUNT_ID,
         threads_account=THREADS_ACCOUNT_ID,
         require_threads=False,

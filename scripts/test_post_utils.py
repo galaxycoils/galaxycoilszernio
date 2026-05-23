@@ -11,7 +11,15 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from scripts.post_utils import ACCOUNT_ID, DEDUP_SKIP_CAPTION, apply_dedup_suffix, create_post, create_paired_posts
+from scripts.post_utils import (
+    ACCOUNT_ID,
+    DEDUP_SKIP_CAPTION,
+    apply_dedup_suffix,
+    create_post,
+    create_paired_posts,
+    prepare_paired_captions,
+    schedule_paired_cross_platform_post,
+)
 
 SAMPLE_URL = "https://player.vimeo.com/external/video-files/12345/hd.mp4"
 SAMPLE_CAPTION = "Test caption with hashtags #drone #viral"
@@ -170,6 +178,21 @@ class TestRetryLogic(unittest.TestCase):
             self.assertFalse(result)
             self.assertEqual(m_run.call_count, 1)
             m_sleep.assert_not_called()
+
+
+class TestPreparePairedCaptions(unittest.TestCase):
+    def test_builds_ig_and_threads_from_base(self):
+        ig, th = prepare_paired_captions("Which shot wins?", seo_tags="#Tag1 #Tag2")
+        self.assertIn("Which shot wins?", ig)
+        self.assertIn("#Tag1", ig)
+        self.assertNotIn("#Tag1", th)
+        self.assertIn("Which shot wins?", th)
+
+    def test_migration_preserves_full_ig_caption(self):
+        full = "Keep me\n\n#GalaxyCoils #Drone"
+        ig, th = prepare_paired_captions("", ig_caption=full)
+        self.assertEqual(ig, full)
+        self.assertNotIn("#GalaxyCoils", th)
 
 
 class TestApplyDedupSuffix(unittest.TestCase):

@@ -31,3 +31,11 @@ history.log.bak
 .env
 .venv/
 venv/
+
+# Local graphify output
+graphify-out/
+
+# Local stress / debug artifacts
+temp_media/
+stress_test_*.py
+test_debug.py

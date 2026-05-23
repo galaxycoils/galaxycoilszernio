@@ -292,6 +292,65 @@ def reply_to_post(post_id: str, account_id: str, message: str) -> bool:
     return False
 
 
+def prepare_paired_captions(
+    base_caption: str = "",
+    *,
+    ig_caption: Optional[str] = None,
+    seo_tags: Optional[str] = None,
+) -> tuple[str, str]:
+    """
+    Build Instagram and Threads caption pair from scheduler base text.
+    Pass ig_caption when migrating an existing unified post (preserves full IG text).
+    """
+    from scripts.rebuild_viral_queue import get_social_seo_tags
+    from scripts.threads_utils import build_threads_caption, strip_ig_seo_block
+
+    tags = seo_tags if seo_tags is not None else get_social_seo_tags()
+    if ig_caption is not None:
+        ig_text = ig_caption
+        threads_base = strip_ig_seo_block(ig_caption) or (base_caption or "").strip()
+    else:
+        core = (base_caption or "").strip()
+        ig_text = f"{core}\n\n{tags}" if core else tags
+        threads_base = core
+    threads_text = build_threads_caption(threads_base)
+    return ig_text, threads_text
+
+
+def schedule_paired_cross_platform_post(
+    url: Optional[str],
+    scheduled_at: str,
+    *,
+    base_caption: str = "",
+    ig_caption: Optional[str] = None,
+    seo_tags: Optional[str] = None,
+    ig_account: str = IG_ACCOUNT_ID,
+    threads_account: str = THREADS_ACCOUNT_ID,
+    require_threads: bool = False,
+    max_retries: int = 3,
+    media_url: Optional[str] = None,
+) -> tuple[str | bool, str | bool]:
+    """
+    Single entry point for schedulers: SEO + IG caption + Threads caption + paired Zernio posts.
+    """
+    ig_text, threads_text = prepare_paired_captions(
+        base_caption,
+        ig_caption=ig_caption,
+        seo_tags=seo_tags,
+    )
+    return create_paired_posts(
+        url,
+        ig_text,
+        threads_text,
+        scheduled_at,
+        ig_account=ig_account,
+        threads_account=threads_account,
+        require_threads=require_threads,
+        max_retries=max_retries,
+        media_url=media_url,
+    )
+
+
 def create_paired_posts(
     url: Optional[str],
     ig_caption: str,
