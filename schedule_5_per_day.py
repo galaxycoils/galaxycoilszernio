@@ -21,10 +21,9 @@ from typing import Dict, List, Tuple
 import requests
 
 from scripts.captions_pool import CTA_CAPTIONS, MICRO_HOOKS, VALUE_CAPTIONS
-from scripts.post_utils import create_post as _create_post, ZERNI0, reply_to_post, ensure_zernio_media_url
+from scripts.post_utils import create_paired_posts, ZERNI0
 from scripts.secure_dedup import extract_id, get_all_seen_source_ids, record_scheduled
-from scripts.threads_utils import enrich_for_threads
-from scripts.threads_conversation import generate_first_reply
+from scripts.threads_utils import build_threads_caption
 from scripts.rebuild_viral_queue import get_social_seo_tags
 
 # Load .env file if it exists (so the .env file at project root is picked up automatically)
@@ -178,20 +177,26 @@ def open_slots(days_ahead: int = 10) -> List[str]:
 
 def create_post(url: str, caption: str, scheduled_at: str) -> None:
     video_id = extract_id(url)
-    print(f"Scheduling unified cross-platform post for {scheduled_at}...")
+    print(f"Scheduling IG + Threads (separate captions) for {scheduled_at}...")
     tags = get_social_seo_tags()
     ig_caption = f"{caption}\n\n{tags}" if caption else tags
+    threads_caption = build_threads_caption(caption)
 
-    # Resolve Pexels URL to Zernio CDN URL first so we only upload once
-    cdn_url = ensure_zernio_media_url(url)
-
-    # Schedule Unified Post (IG + Threads)
-    post_id = _create_post(cdn_url, ig_caption, scheduled_at, accounts=[IG_ACCOUNT, THREADS_ACCOUNT])
-    if post_id:
-        if video_id:
-            record_scheduled(video_id, url)
-    else:
-        raise RuntimeError(f"Failed to create unified post for {scheduled_at}")
+    ig_post_id, threads_post_id = create_paired_posts(
+        url,
+        ig_caption,
+        threads_caption,
+        scheduled_at,
+        ig_account=IG_ACCOUNT,
+        threads_account=THREADS_ACCOUNT,
+        require_threads=False,
+    )
+    if not ig_post_id:
+        raise RuntimeError(f"Failed to schedule Instagram post for {scheduled_at}")
+    if video_id:
+        record_scheduled(video_id, url)
+    if not threads_post_id:
+        print(f"  ⚠ Instagram scheduled ({ig_post_id}) but Threads failed for {scheduled_at}")
 
 
 def main():
@@ -229,8 +234,12 @@ def main():
         captions = captions[:len(urls)]
 
     for scheduled_at, url, caption in zip(slots, urls, captions):
-        create_post(url, caption, scheduled_at)
-        time.sleep(5)
+        try:
+            create_post(url, caption, scheduled_at)
+            time.sleep(random.uniform(5, 15)) # Increased and randomized wait
+        except Exception as e:
+            print(f"Error scheduling post at {scheduled_at}: {e}")
+            continue
     print(f"Scheduled {len(slots)} unique posts.")
 
 

@@ -39,3 +39,20 @@ def enrich_for_threads(caption: str) -> str:
         return thread_post[:477] + "..."
         
     return thread_post
+
+
+def strip_ig_seo_block(caption: str) -> str:
+    """Remove trailing SEO/hashtag block from IG-style scheduled captions."""
+    text = (caption or "").strip()
+    if not text:
+        return ""
+    stripped = re.sub(r"\n\n(?:#\S+\s*)+$", "", text, flags=re.MULTILINE).strip()
+    return stripped or text
+
+
+def build_threads_caption(base_caption: str) -> str:
+    """Build a Threads-ready caption from scheduler base text (no IG hashtag block)."""
+    core = strip_ig_seo_block(base_caption) or (base_caption or "").strip()
+    if not core:
+        core = "New aerial drop — which angle hits hardest?"
+    return enrich_for_threads(core)

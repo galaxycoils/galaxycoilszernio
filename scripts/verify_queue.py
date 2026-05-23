@@ -7,8 +7,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from scripts.secure_dedup import extract_id, fetch_posts, fetch_published_source_ids
 
-# ZERNI0 is dynamically resolved in secure_dedup
-
 def classify_caption(content: str) -> str:
     text = (content or "").strip()
     lower = text.lower()
@@ -32,6 +30,24 @@ def classify_caption(content: str) -> str:
 def main():
     scheduled = fetch_posts("scheduled", limit=100)
     published_ids = fetch_published_source_ids(limit=100)
+    
+    # NEW: Check for API error logs and categorize
+    cli_errors = []
+    error_summary = {"rate_limits": 0, "oauth_failures": 0, "duplicates": 0, "other": 0}
+    if os.path.exists("logs/cli_errors.log"):
+        with open("logs/cli_errors.log", "r") as f:
+            lines = f.readlines()
+            for line in lines:
+                msg = line.lower()
+                if "429" in msg or "rate" in msg:
+                    error_summary["rate_limits"] += 1
+                elif "oauth" in msg:
+                    error_summary["oauth_failures"] += 1
+                elif "duplicate" in msg:
+                    error_summary["duplicates"] += 1
+                elif "error" in msg or "failed" in msg:
+                    error_summary["other"] += 1
+            cli_errors = lines[-20:] # Last 20 lines
 
     source_ids = []
     by_day = Counter()
@@ -61,6 +77,8 @@ def main():
         "published_overlap": overlap,
         "per_day": dict(sorted(by_day.items())),
         "caption_mix": dict(by_kind),
+        "cli_error_summary": error_summary,
+        "recent_cli_errors": cli_errors
     }, indent=2))
 
 

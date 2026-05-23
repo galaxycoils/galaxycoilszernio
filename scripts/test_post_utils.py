@@ -11,7 +11,7 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from scripts.post_utils import ACCOUNT_ID, create_post
+from scripts.post_utils import ACCOUNT_ID, DEDUP_SKIP_CAPTION, apply_dedup_suffix, create_post, create_paired_posts
 
 SAMPLE_URL = "https://player.vimeo.com/external/video-files/12345/hd.mp4"
 SAMPLE_CAPTION = "Test caption with hashtags #drone #viral"
@@ -86,6 +86,27 @@ class TestCommandConstruction(unittest.TestCase):
         idx_text = cmd.index("--text")
         self.assertEqual(cmd[idx_text + 1], SAMPLE_CAPTION)
 
+    def test_dedup_suffix_appended_for_ig(self):
+        create_post(SAMPLE_URL, "My caption here for IG", draft=True)
+        cmd = self._call_args()
+        text = cmd[cmd.index("--text") + 1]
+        self.assertTrue(text.startswith("My caption here for IG #"))
+        self.assertEqual(len(text.split()[-1]), 7)  # # + 6 hex chars
+
+    def test_dedup_suffix_skipped_for_test_caption(self):
+        create_post(SAMPLE_URL, DEDUP_SKIP_CAPTION, draft=True)
+        cmd = self._call_args()
+        text = cmd[cmd.index("--text") + 1]
+        self.assertEqual(text, DEDUP_SKIP_CAPTION)
+
+    def test_reuses_media_url_without_second_upload(self):
+        cdn = "https://media.zernio.com/media/test.mp4"
+        with mock.patch("scripts.post_utils.ensure_zernio_media_url") as m_upload:
+            create_post(None, SAMPLE_CAPTION, draft=True, media_url=cdn)
+        m_upload.assert_not_called()
+        cmd = self._call_args()
+        self.assertIn(cdn, cmd)
+
 
 # ---------------------------------------------------------------------------
 # Success / failure paths
@@ -121,22 +142,24 @@ class TestRetryLogic(unittest.TestCase):
         rate_limited = mock.Mock(returncode=1, stdout="", stderr="HTTP 429 Too Many Requests")
         success = mock.Mock(returncode=0)
         with mock.patch("scripts.post_utils.subprocess.run", side_effect=[rate_limited, success]) as m_run, \
-             mock.patch("scripts.post_utils.time.sleep") as m_sleep:
+             mock.patch("scripts.post_utils.time.sleep") as m_sleep, \
+             mock.patch("scripts.post_utils.random.randint", return_value=0): # Mock random to 0 for deterministic test
             result = create_post(SAMPLE_URL, SAMPLE_CAPTION, draft=True)
             self.assertTrue(result)
             self.assertEqual(m_run.call_count, 2)
-            # wait_time = 60 * 1
+            # wait_time = 60 * 2^0 + 0 = 60
             m_sleep.assert_called_once_with(60)
 
     def test_retries_on_500(self):
         server_error = mock.Mock(returncode=1, stdout="500 Internal Server Error", stderr="")
         success = mock.Mock(returncode=0)
         with mock.patch("scripts.post_utils.subprocess.run", side_effect=[server_error, success]) as m_run, \
-             mock.patch("scripts.post_utils.time.sleep") as m_sleep:
+             mock.patch("scripts.post_utils.time.sleep") as m_sleep, \
+             mock.patch("scripts.post_utils.random.randint", return_value=0): # Mock random to 0
             result = create_post(SAMPLE_URL, SAMPLE_CAPTION, draft=True)
             self.assertTrue(result)
             self.assertEqual(m_run.call_count, 2)
-            # wait_time = 10 * 1
+            # wait_time = 10 * 1 + 0 = 10
             m_sleep.assert_called_once_with(10)
 
     def test_stops_on_generic_error(self):
@@ -147,6 +170,65 @@ class TestRetryLogic(unittest.TestCase):
             self.assertFalse(result)
             self.assertEqual(m_run.call_count, 1)
             m_sleep.assert_not_called()
+
+
+class TestApplyDedupSuffix(unittest.TestCase):
+    def test_adds_unique_token(self):
+        a = apply_dedup_suffix("Hello world test")
+        b = apply_dedup_suffix("Hello world test")
+        self.assertNotEqual(a, b)
+
+    def test_skips_test_caption(self):
+        self.assertEqual(apply_dedup_suffix(DEDUP_SKIP_CAPTION), DEDUP_SKIP_CAPTION)
+
+
+class TestCreatePairedPosts(unittest.TestCase):
+    def setUp(self):
+        patcher_zernio = mock.patch("scripts.post_utils.ZERNI0", "zernio")
+        patcher_zernio.start()
+        self.addCleanup(patcher_zernio.stop)
+
+    def test_uploads_once_creates_two_posts(self):
+        cdn = "https://media.zernio.com/media/once.mp4"
+        success = mock.Mock(returncode=0, stdout='{"id":"post1"}')
+        with mock.patch("scripts.post_utils.ensure_zernio_media_url", return_value=cdn) as m_upload, \
+             mock.patch("scripts.post_utils.subprocess.run", return_value=success) as m_run:
+            ig_id, th_id = create_paired_posts(
+                "https://pexels.com/video/1/file.mp4",
+                "IG caption text here",
+                "Threads caption text here",
+                "2026-06-01T10:00:00.000Z",
+            )
+        m_upload.assert_called_once()
+        self._assert_paired_result(m_run, ig_id, th_id)
+
+    def test_skips_upload_when_media_url_provided(self):
+        cdn = "https://media.zernio.com/media/existing.mp4"
+        success = mock.Mock(returncode=0, stdout='{"id":"post1"}')
+        with mock.patch("scripts.post_utils.ensure_zernio_media_url") as m_upload, \
+             mock.patch("scripts.post_utils.subprocess.run", return_value=success) as m_run:
+            ig_id, th_id = create_paired_posts(
+                None,
+                "IG caption text here",
+                "Threads caption text here",
+                "2026-06-01T10:00:00.000Z",
+                media_url=cdn,
+            )
+        m_upload.assert_not_called()
+        self._assert_paired_result(m_run, ig_id, th_id)
+        for call in m_run.call_args_list:
+            cmd = call[0][0]
+            self.assertIn(cdn, cmd)
+
+    def _assert_paired_result(self, m_run, ig_id, th_id):
+        self.assertEqual(m_run.call_count, 2)
+        self.assertTrue(ig_id)
+        self.assertTrue(th_id)
+        texts = []
+        for call in m_run.call_args_list:
+            cmd = call[0][0]
+            texts.append(cmd[cmd.index("--text") + 1])
+        self.assertNotEqual(texts[0], texts[1])
 
 
 if __name__ == "__main__":

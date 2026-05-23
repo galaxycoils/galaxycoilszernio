@@ -11,10 +11,9 @@ from typing import Dict, List, Tuple
 import requests
 
 from scripts.captions_pool import CTA_CAPTIONS, MICRO_HOOKS, VALUE_CAPTIONS, GENERIC_HOOKS
-from scripts.post_utils import create_single_post as create_post, ZERNI0, reply_to_post, ensure_zernio_media_url
+from scripts.post_utils import ZERNI0, create_paired_posts
 from scripts.secure_dedup import extract_id, get_all_seen_source_ids, record_scheduled, is_blacklisted
-from scripts.threads_utils import enrich_for_threads
-from scripts.threads_conversation import generate_first_reply
+from scripts.threads_utils import build_threads_caption
 
 # Load .env
 _dotenv_path = Path(__file__).resolve().parent / ".env"
@@ -154,23 +153,24 @@ def main():
         
         print(f"Scheduling IG (video) and Threads (with media via CDN) separately for {scheduled_at}...")
         from scripts.rebuild_viral_queue import get_social_seo_tags
-        import uuid
+
         tags = get_social_seo_tags()
         ig_caption = f"{caption}\n\n{tags}" if caption else tags
-        unique_id = uuid.uuid4().hex[:6]
-        threads_caption = f"{caption}\n\n{tags}" if caption else f"Rate this 1-10! 👇 [{unique_id}]\n\n{tags}"
+        threads_caption = build_threads_caption(caption)
 
-        # Resolve Pexels URL to Zernio CDN URL first so we only upload once
-        cdn_url = ensure_zernio_media_url(url)
-
-        # 1. Schedule Instagram Post (with video)
-        ig_post_id = create_post(cdn_url, ig_caption, scheduled_at, accounts=[IG_ACCOUNT])
+        ig_post_id, threads_post_id = create_paired_posts(
+            url,
+            ig_caption,
+            threads_caption,
+            scheduled_at,
+            ig_account=IG_ACCOUNT,
+            threads_account=THREADS_ACCOUNT,
+        )
         if ig_post_id:
             if video_id:
                 record_scheduled(video_id, url)
-
-            # 2. Schedule Threads Post (with video!)
-            create_post(cdn_url, threads_caption, scheduled_at, accounts=[THREADS_ACCOUNT])
+            if not threads_post_id:
+                print(f"  ⚠ Threads schedule failed for {scheduled_at}")
             # Threads scheduled text replies via Zernio fail with 400 error, so we skip reply_to_post here.
         
         time.sleep(10) # Safety buffer

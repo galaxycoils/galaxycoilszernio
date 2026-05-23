@@ -42,6 +42,7 @@ last-updated: 2026-05-22
 | scripts/rebuild_viral_queue.py | Queue rebuild tool |
 | scripts/update_empty_posts.py | Empty post fixer |
 | scripts/unify_scheduled_queue.py | Migration script to unify Instagram and Threads scheduled queues |
+| scripts/split_scheduled_queue.py | Migration script to split unified scheduled posts into paired IG + Threads posts |
 | scripts/health_monitor.py | Health check and pre-push validations |
 | scripts/optimize_engagement.py | Updates caption mix weights based on performance metrics |
 | scripts/analyze_engagement.py | Analyzes performance metrics to identify top-performing posts |

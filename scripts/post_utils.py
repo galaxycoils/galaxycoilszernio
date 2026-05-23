@@ -10,6 +10,7 @@ import os
 import shutil
 import requests
 import uuid
+import random
 from typing import Optional
 from pathlib import Path
 
@@ -24,6 +25,9 @@ def _resolve_zernio() -> str:
 
 ZERNI0 = _resolve_zernio()
 ACCOUNT_ID = "6a0afc8a5e333c0529912a50"
+IG_ACCOUNT_ID = "6a0afc8a5e333c0529912a50"
+THREADS_ACCOUNT_ID = "6a0f83d7520992756d97578f"
+DEDUP_SKIP_CAPTION = "Test caption with hashtags #drone #viral"
 
 TAGS = "drone,fpv,cinematic,aerial,dronevideo,fpvlife,cinematography,dronelife,aerialvideography,viral"
 HASHTAGS = "#drone,#fpv,#cinematic,#aerial,#dronevideo,#fpvlife,#droneshots,#cinematicdrone,#aerialfootage,#dronefly,#viral,#explore"
@@ -119,6 +123,14 @@ def ensure_zernio_media_url(url: str) -> str:
     return url
 
 
+def apply_dedup_suffix(caption: str) -> str:
+    """Append a unique token so Zernio/Meta do not treat reposts as duplicate content."""
+    text = (caption or "").strip()
+    if not text or text == DEDUP_SKIP_CAPTION:
+        return caption
+    return f"{text} #{uuid.uuid4().hex[:6]}"
+
+
 def validate_post_content(caption: str, platform: str = "instagram") -> bool:
     text = (caption or "").strip()
     if not text or len(text.split()) < 3:
@@ -135,6 +147,7 @@ def create_single_post(
     accounts: Optional[str | list[str]] = None,
     draft: bool = False,
     max_retries: int = 3,
+    media_url: Optional[str] = None,
 ) -> str | bool:
     """
     Create a single zernio post for one or more accounts.
@@ -156,7 +169,15 @@ def create_single_post(
     has_ig = any(a != "6a0f83d7520992756d97578f" for a in accounts)
 
     target_platform = "instagram" if has_ig else "threads"
-    target_desc = "+".join(["threads" if a == "6a0f83d7520992756d97578f" else "instagram" for a in accounts])
+    target_desc = "+".join(
+        ["threads" if a == THREADS_ACCOUNT_ID else "instagram" for a in accounts]
+    )
+
+    caption = apply_dedup_suffix(caption)
+
+    # Increase retries for Threads (often needs more room for media processing)
+    if has_threads:
+        max_retries = max(max_retries, 5)
 
     if not validate_post_content(caption, target_platform):
         print(f"ERROR: Caption validation failed for {target_platform}: '{caption[:60]}'")
@@ -169,9 +190,11 @@ def create_single_post(
         "--timezone", TIMEZONE,
     ]
     
-    if url:
-        url = ensure_zernio_media_url(url)
-        cmd.extend(["--media", url])
+    resolved_media = media_url
+    if url and not resolved_media:
+        resolved_media = ensure_zernio_media_url(url)
+    if resolved_media:
+        cmd.extend(["--media", resolved_media])
 
     if has_ig:
         cmd.extend(["--tags", TAGS, "--hashtags", HASHTAGS])
@@ -207,25 +230,48 @@ def create_single_post(
             except Exception as e:
                 print(f"  ✗ Exception in success check: {e}")
 
-        # ERROR HANDLING
+        # ERROR HANDLING (Log to file and check for retries)
+        log_path = os.path.join("/Users/cmd/galaxycoilszernio", "logs", "cli_errors.log")
+        with open(log_path, "a") as f:
+            f.write(f"--- Attempt {attempt} ---\nCmd: {' '.join(cmd)}\nStdout: {result.stdout}\nStderr: {result.stderr}\n\n")
+
+        # Analyze error content
         raw = ""
-        if isinstance(result.stdout, (str, bytes, bytearray)):
-            raw += result.stdout.decode() if isinstance(result.stdout, (bytes, bytearray)) else result.stdout
-        if isinstance(result.stderr, (str, bytes, bytearray)):
-            raw += result.stderr.decode() if isinstance(result.stderr, (bytes, bytearray)) else result.stderr
+        if isinstance(result.stdout, str):
+            raw += result.stdout
+        elif isinstance(result.stdout, (bytes, bytearray)):
+            raw += result.stdout.decode(errors='ignore')
+        
+        if isinstance(result.stderr, str):
+            raw += result.stderr
+        elif isinstance(result.stderr, (bytes, bytearray)):
+            raw += result.stderr.decode(errors='ignore')
         
         msg = raw.lower()
         is_429 = "429" in msg or "rate" in msg
         is_500 = "500" in msg or "internal server error" in msg
+        is_oauth = "oauth" in msg or "exception" in msg
 
         if is_429:
-            wait = 60 * attempt
+            # Randomized exponential backoff to avoid hammering API
+            wait = (60 * (2 ** (attempt - 1))) + (random.randint(0, 30))
             print(f"  ⟳ Rate limited (429) {target_desc} attempt {attempt}/{max_retries}, retry in {wait}s")
             time.sleep(wait)
         elif is_500:
-            wait = 10 * attempt
+            # Randomized backoff for server errors
+            wait = (10 * attempt) + (random.randint(0, 10))
             print(f"  ⟳ Server error (500) {target_desc} attempt {attempt}/{max_retries}, retry in {wait}s")
             time.sleep(wait)
+        elif is_oauth:
+            # Check if it's a transient OAuth error (e.g., Code 2, is_transient: true)
+            is_transient = "transient" in msg or '"code":2' in msg
+            if is_transient and attempt < max_retries:
+                wait = 15 * attempt
+                print(f"  ⟳ Transient OAuth error (retryable) {target_desc} attempt {attempt}/{max_retries}, retry in {wait}s")
+                time.sleep(wait)
+            else:
+                print(f"  ✗ Persistent/Max-retry Auth error {target_desc}: {raw[:300]}")
+                return False
         else:
             print(f"  ✗ Non-retryable error {target_desc}: {raw[:300]}")
             return False
@@ -244,6 +290,51 @@ def reply_to_post(post_id: str, account_id: str, message: str) -> bool:
         return True
     print(f"  ✗ Reply failed: {result.stderr[:200]}")
     return False
+
+
+def create_paired_posts(
+    url: Optional[str],
+    ig_caption: str,
+    threads_caption: str,
+    scheduled_at: str,
+    *,
+    ig_account: str = IG_ACCOUNT_ID,
+    threads_account: str = THREADS_ACCOUNT_ID,
+    require_threads: bool = False,
+    max_retries: int = 3,
+    media_url: Optional[str] = None,
+) -> tuple[str | bool, str | bool]:
+    """
+    Schedule the same media to Instagram and Threads with platform-specific captions.
+    Uploads media once, then creates two posts (separate content hashes for dedup).
+    Pass media_url when the asset is already on Zernio CDN (migrations, retries).
+    """
+    cdn_url = media_url
+    if url and not cdn_url:
+        cdn_url = ensure_zernio_media_url(url)
+
+    ig_result = create_single_post(
+        None,
+        ig_caption,
+        scheduled_at,
+        accounts=[ig_account],
+        max_retries=max_retries,
+        media_url=cdn_url,
+    )
+    if not ig_result:
+        return False, False
+
+    threads_result = create_single_post(
+        None,
+        threads_caption,
+        scheduled_at,
+        accounts=[threads_account],
+        max_retries=max_retries,
+        media_url=cdn_url,
+    )
+    if require_threads and not threads_result:
+        return ig_result, False
+    return ig_result, threads_result
 
 
 # Backward compatibility alias
