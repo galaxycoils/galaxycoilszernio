@@ -93,5 +93,5 @@ def main():
         print(f"Deleted {len(to_delete)} duplicates.")
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     main()
