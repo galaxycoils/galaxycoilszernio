@@ -13,8 +13,8 @@ ZERNI0 = shutil.which("zernio") or os.environ.get("ZERNIO_PATH", "")
 ACCOUNT_ID = "6a0afc8a5e333c0529912a50"
 BACKUP_MANIFEST = "/Users/cmd/galaxycoilszernio/backups/2026-05-20-fix/rebuild-manifest.json"
 
-from scripts.post_utils import create_post as _create_post
 from scripts.captions_pool import CTA_CAPTIONS, MICRO_HOOKS, VALUE_CAPTIONS
+from scripts.post_utils import create_post as _create_post
 
 
 def run(cmd):
@@ -97,7 +97,7 @@ def build_caption_map(posts):
         if len(captions) != len(day_posts):
             raise RuntimeError(f"Caption count mismatch for {day}: {len(captions)} vs {len(day_posts)}")
 
-        for post, caption in zip(day_posts, captions):
+        for post, caption in zip(day_posts, captions, strict=False):
             url = (post.get("mediaItems") or [{}])[0].get("url", "")
             manifest.append({
                 "old_post_id": post.get("_id"),
