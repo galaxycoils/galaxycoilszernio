@@ -5,6 +5,7 @@ Unit tests for schedule_5_per_day.py core functions:
   - open_slots — slot generation: empty, partial, full, days_ahead, past exclusion
   - fetch_unique_urls — URL fetching: limit, seen-skip, intra-batch dedup, exhaustion
 """
+import os
 import sys
 import unittest
 from datetime import datetime, timedelta, timezone
@@ -14,6 +15,7 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import schedule_5_per_day
+
 
 # Sample Pexels video fixtures
 def _video(url, height=1080, width=1920):
@@ -325,6 +327,187 @@ class TestFetchUniqueURLs(unittest.TestCase):
 
         self.assertEqual(len(urls), 1)
         self.assertIn("888", urls[0])
+
+
+# ═══════════════════════════════════════════════════════════════
+# open_slots — ISO format robustness (double-booking regression)
+# ═══════════════════════════════════════════════════════════════
+class TestOpenSlotsIsoFormats(unittest.TestCase):
+    """The old string-equality check missed occupied slots when the API
+    returned a different-but-equal timestamp format → double-booking risk."""
+
+    def _slots_with_occupied(self, occupied):
+        with mock.patch("schedule_5_per_day.list_scheduled", return_value=occupied), \
+             mock.patch("schedule_5_per_day.datetime") as mock_dt:
+            mock_dt.now.return_value = FROZEN_NOW
+            mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
+            return schedule_5_per_day.open_slots(days_ahead=10)
+
+    def test_z_suffix_without_millis_still_occupied(self):
+        occupied = [{"scheduledFor": "2026-06-01T10:00:00Z"}]
+        slots = self._slots_with_occupied(occupied)
+        self.assertEqual(len(slots), 54)
+        self.assertNotIn("2026-06-01T10:00:00.000Z", slots)
+
+    def test_explicit_offset_still_occupied(self):
+        occupied = [{"scheduledFor": "2026-06-01T10:00:00+00:00"}]
+        slots = self._slots_with_occupied(occupied)
+        self.assertNotIn("2026-06-01T10:00:00.000Z", slots)
+
+    def test_fractional_seconds_still_occupied(self):
+        occupied = [{"scheduledFor": "2026-06-01T10:00:00.123456Z"}]
+        slots = self._slots_with_occupied(occupied)
+        # 10:00:00.123 != 10:00:00.000 — close but distinct instant; slot stays open.
+        # (A post AT the slot second exact is covered by the cases above.)
+        self.assertIn("2026-06-01T10:00:00.000Z", slots)
+
+    def test_unparseable_timestamp_ignored(self):
+        occupied = [{"scheduledFor": "not-a-date"}, {"scheduledFor": ""}]
+        slots = self._slots_with_occupied(occupied)
+        self.assertEqual(len(slots), 55)
+
+
+class TestParseIso(unittest.TestCase):
+    def test_z_suffix(self):
+        dt = schedule_5_per_day._parse_iso("2026-06-01T10:00:00.000Z")
+        self.assertEqual(dt, datetime(2026, 6, 1, 10, 0, tzinfo=timezone.utc))
+
+    def test_naive_assumed_utc(self):
+        dt = schedule_5_per_day._parse_iso("2026-06-01T10:00:00")
+        self.assertEqual(dt, datetime(2026, 6, 1, 10, 0, tzinfo=timezone.utc))
+
+    def test_offset_normalized_to_utc(self):
+        dt = schedule_5_per_day._parse_iso("2026-06-01T12:00:00+02:00")
+        self.assertEqual(dt, datetime(2026, 6, 1, 10, 0, tzinfo=timezone.utc))
+
+    def test_garbage_returns_none(self):
+        for bad in (None, "", "nope", "2026-13-99T99:99"):
+            self.assertIsNone(schedule_5_per_day._parse_iso(bad))
+
+
+# ═══════════════════════════════════════════════════════════════
+# search_pexels — retry/backoff
+# ═══════════════════════════════════════════════════════════════
+class TestSearchPexels(unittest.TestCase):
+    def test_success_first_try(self):
+        with mock.patch("schedule_5_per_day.requests.get",
+                        return_value=_pexels_response(1, 2, 3)) as get:
+            videos = schedule_5_per_day.search_pexels("drone")
+        self.assertEqual(len(videos), 3)
+        self.assertEqual(get.call_count, 1)
+
+    def test_retries_on_request_exception(self):
+        import requests as real_requests
+        ok = _pexels_response(7)
+        with mock.patch("schedule_5_per_day.requests.get",
+                        side_effect=[real_requests.ConnectionError("down"), ok]), \
+             mock.patch("schedule_5_per_day.time.sleep") as sleep:
+            videos = schedule_5_per_day.search_pexels("drone")
+        self.assertEqual(len(videos), 1)
+        sleep.assert_called_once_with(5)
+
+    def test_exhaustion_raises_runtime_error(self):
+        import requests as real_requests
+        with mock.patch("schedule_5_per_day.requests.get",
+                        side_effect=real_requests.Timeout("t")), \
+             mock.patch("schedule_5_per_day.time.sleep"), self.assertRaises(RuntimeError):
+            schedule_5_per_day.search_pexels("drone", max_retries=2)
+
+
+# ═══════════════════════════════════════════════════════════════
+# create_post / main
+# ═══════════════════════════════════════════════════════════════
+class TestCreatePost(unittest.TestCase):
+    def test_success_records_history(self):
+        url = "https://cdn.pexels.com/video-files/4242/hd.mp4"
+        with mock.patch("schedule_5_per_day._create_post", return_value=True), \
+             mock.patch("schedule_5_per_day.record_scheduled") as record:
+            schedule_5_per_day.create_post(url, "cap", "2026-06-01T10:00:00.000Z")
+        record.assert_called_once_with("4242")
+
+    def test_failure_raises(self):
+        with mock.patch("schedule_5_per_day._create_post", return_value=False), self.assertRaises(RuntimeError):
+            schedule_5_per_day.create_post("https://x/video-files/1/a.mp4", "", "2026-06-01T10:00:00.000Z")
+
+
+class TestRunJson(unittest.TestCase):
+    def test_raises_on_nonzero_exit(self):
+        proc = mock.Mock(returncode=1, stdout="out", stderr="err")
+        with mock.patch("schedule_5_per_day.subprocess.run", return_value=proc), \
+             self.assertRaises(RuntimeError):
+            schedule_5_per_day.run_json(["zernio"])
+
+    def test_list_scheduled_parses_posts(self):
+        with mock.patch("schedule_5_per_day.run_json", return_value={"posts": [{"_id": "p1"}]}):
+            self.assertEqual(schedule_5_per_day.list_scheduled(), [{"_id": "p1"}])
+
+
+class TestDotEnvLoader(unittest.TestCase):
+    """The import-time .env loader. Skipped when a real .env exists so we
+    never clobber local secrets."""
+
+    def test_env_file_loaded(self):
+        import importlib
+        repo_root = Path(__file__).resolve().parent.parent
+        env_path = repo_root / ".env"
+        if env_path.exists():
+            self.skipTest("real .env present — not touching it")
+        try:
+            env_path.write_text("# comment\nTEST_DOTENV_KEY=some=value\nEMPTY_LINE_OK\n\n")
+            os.environ.pop("TEST_DOTENV_KEY", None)
+            importlib.reload(schedule_5_per_day)
+            self.assertEqual(os.environ.get("TEST_DOTENV_KEY"), "some=value")
+        finally:
+            os.environ.pop("TEST_DOTENV_KEY", None)
+            env_path.unlink(missing_ok=True)
+            importlib.reload(schedule_5_per_day)
+
+
+class TestZernioGuardPostUtils(unittest.TestCase):
+    def test_create_post_returns_false_without_zernio(self):
+        from scripts import post_utils
+        with mock.patch.object(post_utils, "ZERNI0", ""):
+            self.assertFalse(post_utils.create_post("https://x/video-files/1/a.mp4", "cap", "2026-06-01T10:00:00.000Z"))
+
+
+class TestMain(unittest.TestCase):
+    def test_missing_api_key_exits(self):
+        with mock.patch.object(schedule_5_per_day, "PEXELS_API_KEY", None), \
+             mock.patch("sys.argv", ["schedule_5_per_day.py"]), self.assertRaises(SystemExit) as ctx:
+            schedule_5_per_day.main()
+        self.assertIn("PEXELS_API_KEY", str(ctx.exception))
+
+    def test_dry_run_does_not_need_api_key(self):
+        with mock.patch.object(schedule_5_per_day, "PEXELS_API_KEY", None), \
+             mock.patch("schedule_5_per_day.open_slots", return_value=["2026-06-01T10:00:00.000Z"]), \
+             mock.patch("schedule_5_per_day.fetch_unique_urls") as fetch, \
+             mock.patch("sys.argv", ["schedule_5_per_day.py", "--dry-run"]):
+            schedule_5_per_day.main()
+        fetch.assert_not_called()
+
+    def test_no_open_slots_early_return(self):
+        with mock.patch("schedule_5_per_day.open_slots", return_value=[]), \
+             mock.patch("sys.argv", ["schedule_5_per_day.py", "--dry-run"]):
+            schedule_5_per_day.main()  # no exception
+
+    def test_schedules_slots(self):
+        slots = ["2026-06-01T10:00:00.000Z", "2026-06-01T13:00:00.000Z"]
+        urls = ["https://x/video-files/1/a.mp4", "https://x/video-files/2/b.mp4"]
+        with mock.patch.object(schedule_5_per_day, "PEXELS_API_KEY", "k"), \
+             mock.patch("schedule_5_per_day.open_slots", return_value=slots), \
+             mock.patch("schedule_5_per_day.fetch_unique_urls", return_value=urls), \
+             mock.patch("schedule_5_per_day.create_post") as create, \
+             mock.patch("schedule_5_per_day.time.sleep"), \
+             mock.patch("sys.argv", ["schedule_5_per_day.py"]):
+            schedule_5_per_day.main()
+        self.assertEqual(create.call_count, 2)
+
+    def test_insufficient_urls_raises(self):
+        with mock.patch.object(schedule_5_per_day, "PEXELS_API_KEY", "k"), \
+             mock.patch("schedule_5_per_day.open_slots", return_value=["2026-06-01T10:00:00.000Z"]), \
+             mock.patch("schedule_5_per_day.fetch_unique_urls", return_value=[]), \
+             mock.patch("sys.argv", ["schedule_5_per_day.py"]), self.assertRaises(RuntimeError):
+            schedule_5_per_day.main()
 
 
 if __name__ == "__main__":
