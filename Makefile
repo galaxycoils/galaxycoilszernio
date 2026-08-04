@@ -5,23 +5,22 @@
 #  make schedule-dry   Preview what would be scheduled
 #  make fill-gaps      Fill up to 10 schedule gaps
 #  make fill-gaps-dry  Preview gap-fill without creating
-#  make verify         Full queue health check
-#  make audit          Syntax-check all 17 .py files + verify queue
-#  make test           Run all 78 unit tests
-#  make test-secure    Run secure_dedup tests (18)
-#  make test-post      Run post_utils tests (15)
-#  make test-purge     Run purge_dedup tests (10)
-#  make test-gaps      Run fill_gaps tests (8)
-#  make test-schedule  Run schedule tests (27)
+#  make verify         Full queue health check (fails on duplicates/overlap)
+#  make audit          Syntax-check ALL .py files + verify queue
+#  make test           Run the full unit-test suite (auto-discovered)
+#  make coverage       Tests + branch coverage report (fails under 95%)
+#  make lint           Ruff lint (zero-error gate)
+#  make typecheck      Mypy type check (zero-error gate)
+#  make analytics      Engagement report by caption category
 #  make dedup-dry      Preview duplicate posts
 #  make dedup          Delete duplicate scheduled posts
-#  make empties-dry    Preview empty-caption posts
-#  make empties        Fix empty-caption posts
-#  make full-audit     Syntax + verify + all 78 tests (17 files)
+#  make empties-dry    Preview excess empty-caption fixes (mix-protected)
+#  make empties        Fix excess empty captions (keeps intentional ~30%)
+#  make full-audit     audit + lint + typecheck + coverage (CI gate)
 # ────────────────────────────────────────────────────────────────
 
 .PHONY: help schedule schedule-dry fill-gaps fill-gaps-dry \
-        verify audit test test-secure test-post test-purge test-gaps test-schedule \
+        verify audit test coverage lint typecheck \
         dedup-dry dedup empties-dry empties full-audit analytics
 
 # ── Scheduling ─────────────────────────────────────────────────
@@ -48,22 +47,31 @@ analytics:
 verify:
 	python3 scripts/verify_queue.py
 
+# Syntax-check every tracked .py file — self-maintaining, can never
+# drift from the actual file inventory (previously a hardcoded list
+# that silently missed new files like analyze_engagement.py).
 audit:
-	@echo "=== Syntax check ==="
-	@for f in \
-	  purge_zernio_duplicates.py fill_schedule_gaps.py schedule_5_per_day.py \
-	  scripts/batch_recover.py scripts/rebuild_viral_queue.py \
-	  scripts/captions_pool.py scripts/chunk_recover.py scripts/secure_dedup.py \
-	  scripts/verify_queue.py scripts/recover_rebuild.py scripts/post_utils.py \
-	  scripts/update_empty_posts.py \
-	  scripts/test_secure_dedup.py scripts/test_post_utils.py scripts/test_purge_dedup.py \
-	  scripts/test_fill_gaps.py scripts/test_schedule.py; \
-	do \
-	  python3 -m py_compile "$$f" && echo "  OK: $$f" || echo "  FAIL: $$f"; \
-	done
+	@echo "=== Syntax check (all .py files) ==="
+	@fail=0; \
+	for f in $$(find . -name '*.py' -not -path './.git/*' -not -path './.venv/*' | sort); do \
+	  python3 -m py_compile "$$f" && echo "  OK: $$f" || { echo "  FAIL: $$f"; fail=1; }; \
+	done; \
+	exit $$fail
 	@echo ""
 	@echo "=== Queue health ==="
 	@python3 scripts/verify_queue.py
+
+# ── Quality gate ───────────────────────────────────────────────
+
+lint:
+	ruff check .
+
+typecheck:
+	mypy
+
+coverage:
+	python3 -m coverage run -m unittest discover -s scripts -t . -p "test_*.py"
+	python3 -m coverage report
 
 # ── Dedup & Maintenance ────────────────────────────────────────
 
@@ -73,39 +81,25 @@ dedup-dry:
 dedup:
 	python3 purge_zernio_duplicates.py
 
+# Empties maintenance is mix-protected: update_empty_posts.py only acts
+# when empties exceed --max-empty-ratio (default 35%) of the queue, and
+# only fixes enough posts to return to the intentional ~30% (PLAN.md).
 empties-dry:
-	python3 scripts/update_empty_posts.py --dry-run --min-empty 3
+	python3 scripts/update_empty_posts.py --dry-run
 
 empties:
-	python3 scripts/update_empty_posts.py --min-empty 3
+	python3 scripts/update_empty_posts.py
 
 # ── Testing ────────────────────────────────────────────────────
+# Suites are auto-discovered (scripts/test_*.py) — adding a test file
+# requires zero Makefile changes.
 
 test:
-	python3 -m unittest scripts.test_secure_dedup \
-	                       scripts.test_post_utils \
-	                       scripts.test_purge_dedup \
-	                       scripts.test_fill_gaps \
-	                       scripts.test_schedule -v
+	python3 -m unittest discover -s scripts -t . -p "test_*.py" -v
 
-test-secure:
-	python3 -m unittest scripts.test_secure_dedup -v
+# ── Full Audit (pre-push hook + CI) ────────────────────────────
 
-test-post:
-	python3 -m unittest scripts.test_post_utils -v
-
-test-purge:
-	python3 -m unittest scripts.test_purge_dedup -v
-
-test-gaps:
-	python3 -m unittest scripts.test_fill_gaps -v
-
-test-schedule:
-	python3 -m unittest scripts.test_schedule -v
-
-# ── Full Audit ─────────────────────────────────────────────────
-
-full-audit: audit test
+full-audit: audit lint typecheck coverage
 
 # ── Help ───────────────────────────────────────────────────────
 
@@ -118,25 +112,23 @@ help:
 	@echo "  make fill-gaps        Fill up to 10 schedule gaps"
 	@echo "  make fill-gaps-dry    Preview gap-fill without creating"
 	@echo ""
-	@echo "Verification:"
-	@echo "  make verify           Full queue health check"
-	@echo "  make audit            Syntax-check all .py files + verify"
+	@echo "Verification & Quality:"
+	@echo "  make verify           Queue health check (exit 1 on duplicates/overlap)"
+	@echo "  make audit            Syntax-check ALL .py files + verify"
+	@echo "  make lint             Ruff lint"
+	@echo "  make typecheck        Mypy type check"
+	@echo "  make coverage         Tests + coverage (fails under 95%)"
 	@echo ""
 	@echo "Dedup & Maintenance:"
 	@echo "  make dedup-dry        Preview duplicate posts (no deletes)"
 	@echo "  make dedup            Delete duplicate scheduled posts"
-	@echo "  make empties-dry      Preview empty-caption posts (threshold 3)"
-	@echo "  make empties          Fix empty-caption posts (threshold 3)"
+	@echo "  make empties-dry      Preview excess empty-caption fixes"
+	@echo "  make empties          Fix excess empties (protects intentional ~30%)"
 	@echo ""
-	@echo "Testing:"
-	@echo "  make test             Run all 78 unit tests"
-	@echo "  make test-secure      secure_dedup tests (18)"
-	@echo "  make test-post        post_utils tests (15)"
-	@echo "  make test-purge       purge_dedup tests (10)"
-	@echo "  make test-gaps        fill_gaps tests (8)"
-	@echo "  make test-schedule    schedule_5_per_day tests (27)"
+	@echo "Analytics:"
+	@echo "  make analytics        Engagement report by caption category"
 	@echo ""
 	@echo "Full Audit:"
-	@echo "  make full-audit       Syntax + verify + all 78 tests"
+	@echo "  make full-audit       audit + lint + typecheck + coverage"
 	@echo ""
-	@echo "See MEMORY.md for architecture details and current queue state."
+	@echo "See MEMORY.md for architecture, PERFECTION.md for the perfection roadmap."
