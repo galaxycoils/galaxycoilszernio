@@ -1,0 +1,52 @@
+[project]
+name = "galaxycoilszernio"
+version = "1.3.0"
+description = "Automated social media scheduling pipeline for GalaxyCoils Instagram (Pexels + Zernio CLI)"
+requires-python = ">=3.10"
+
+# ── Coverage ──────────────────────────────────────────────────
+# One-off incident-recovery scripts (May 2026 queue rebuild) are excluded:
+# they ran once against a local backup manifest and are kept for reference.
+[tool.coverage.run]
+branch = true
+omit = [
+    "scripts/test_*",
+    "scripts/batch_recover.py",
+    "scripts/chunk_recover.py",
+    "scripts/recover_rebuild.py",
+    "scripts/rebuild_viral_queue.py",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+# Perfection gate: operational modules are at 99%. This fails CI if coverage
+# regresses. Raise toward 100 as the remaining wrappers get tests.
+fail_under = 95
+
+# ── Ruff ──────────────────────────────────────────────────────
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "C90"]
+ignore = [
+    "E501",   # line length handled by formatter-compatible 120 setting + long captions
+]
+
+[tool.ruff.lint.per-file-ignores]
+"scripts/test_*" = ["E402"]  # sys.path bootstrap before imports in tests
+"scripts/*.py" = ["E402"]    # sys.path bootstrap pattern used for direct script execution
+"*.py" = []
+
+# ── Mypy ──────────────────────────────────────────────────────
+[tool.mypy]
+python_version = "3.12"
+mypy_path = "."
+packages = ["scripts"]
+ignore_missing_imports = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_unreachable = true
+# Root-level scripts are checked too, via explicit invocation in `make typecheck`.

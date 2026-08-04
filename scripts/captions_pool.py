@@ -6,7 +6,11 @@ engagement pivot (30% CTA / 30% Empty / 22% Micro-hook / 18% Value)
 stays consistent across schedule_5_per_day.py, rebuild_viral_queue.py,
 and update_empty_posts.py without drift.
 
-Last updated: 2026-05-20 — Engagement Pivot (expanded CTA pool from 4 → 21).
+Also owns classify_caption() — the single canonical caption classifier used
+by verify_queue.py and analyze_engagement.py, so reporting can never drift
+from the pools that generate the captions.
+
+Last updated: 2026-08-04 — added classify_caption().
 """
 
 MICRO_HOOKS = [
@@ -55,3 +59,46 @@ CTA_CAPTIONS = [
     "Would you post this take?",
     "Which angle hits harder?",
 ]
+
+
+# Canonical category names used across reporting (verify_queue, analytics).
+CATEGORIES = ("empty", "cta", "micro-hook", "value", "hashtag-only", "day-template", "other")
+
+# Heuristic fallbacks for captions that are NOT exact pool members
+# (legacy posts, hand-written captions). Pool membership always wins.
+_VALUE_HINTS = ("save this", "save for your next", "workflow", "footage feels flat", "drone edit tip", "real estate")
+_CTA_HINTS = ("?", "👇", "vote", "rate", "tag ")
+
+
+def classify_caption(content: str) -> str:
+    """Classify a caption into the engagement-pivot categories.
+
+    Exact membership in the shared pools is checked first, so the caption mix
+    reported by verify_queue.py / analyze_engagement.py always matches what
+    generate_caption_plan() produced. Heuristics only handle legacy or
+    hand-written captions.
+
+    Returns one of CATEGORIES: "empty", "cta", "micro-hook", "value",
+    "hashtag-only", "day-template", "other".
+    """
+    text = (content or "").strip()
+    if not text:
+        return "empty"
+    if text in CTA_CAPTIONS:
+        return "cta"
+    if text in MICRO_HOOKS:
+        return "micro-hook"
+    if text in VALUE_CAPTIONS:
+        return "value"
+    if text.startswith("#"):
+        return "hashtag-only"
+    lower = text.lower()
+    if "day " in lower or "delivery:" in lower:
+        return "day-template"
+    if any(hint in lower for hint in _VALUE_HINTS):
+        return "value"
+    if any(hint in lower for hint in _CTA_HINTS):
+        return "cta"
+    if len(text.split()) <= 5:
+        return "micro-hook"
+    return "other"

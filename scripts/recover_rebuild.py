@@ -18,6 +18,7 @@ MANIFEST = "/Users/cmd/galaxycoilszernio/backups/2026-05-20-fix/rebuild-manifest
 
 from scripts.post_utils import create_post as _create_post
 
+
 def create_post(item):
     print(f"Creating post for {item['scheduledFor']}...")
     _create_post(item["mediaUrl"], item["content"], item["scheduledFor"])
@@ -33,9 +34,9 @@ def main():
     )
     args = parser.parse_args()
 
-    with open(args.manifest, "r") as f:
+    with open(args.manifest) as f:
         manifest = json.load(f)
-    
+
     for item in manifest:
         create_post(item)
         time.sleep(2) # Brief gap to avoid immediate 429

@@ -4,26 +4,31 @@ import re
 import shutil
 import subprocess
 from collections import Counter
-from typing import Iterable, List, Optional, Set
+from collections.abc import Iterable
+from pathlib import Path
 
-BASE_DIR = "/Users/cmd/galaxycoilszernio"
-HISTORY_FILE = f"{BASE_DIR}/history.log"
+# Repo-root-relative so dedup state resolves correctly on ANY machine
+# (local Mac, CI runner, Docker container) — previously hardcoded to
+# /Users/cmd/galaxycoilszernio, which silently broke load_history()
+# (empty set → no dedup) everywhere except one laptop.
+BASE_DIR = Path(__file__).resolve().parent.parent
+HISTORY_FILE = str(BASE_DIR / "history.log")
 ZERNI0 = shutil.which("zernio") or os.environ.get("ZERNIO_PATH", "")
 
 
-def load_history() -> Set[str]:
+def load_history() -> set[str]:
     if not os.path.exists(HISTORY_FILE):
         return set()
-    with open(HISTORY_FILE, "r", encoding="utf-8") as f:
+    with open(HISTORY_FILE, encoding="utf-8") as f:
         return {line.strip() for line in f if line.strip()}
 
 
-def extract_id(url: str) -> Optional[str]:
+def extract_id(url: str) -> str | None:
     match = re.search(r"video-files/(\d+)/", url or "")
     return match.group(1) if match else None
 
 
-def extract_ids_from_urls(urls: Iterable[str]) -> Set[str]:
+def extract_ids_from_urls(urls: Iterable[str]) -> set[str]:
     ids = set()
     for url in urls:
         video_id = extract_id(url)
@@ -32,21 +37,21 @@ def extract_ids_from_urls(urls: Iterable[str]) -> Set[str]:
     return ids
 
 
-def _run_json(cmd: List[str]) -> dict:
+def _run_json(cmd: list[str]) -> dict:
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
         raise RuntimeError(result.stderr or result.stdout)
     return json.loads(result.stdout)
 
 
-def fetch_posts(status: str, limit: int = 100) -> List[dict]:
+def fetch_posts(status: str, limit: int = 100) -> list[dict]:
     if not ZERNI0:
         return []
     data = _run_json([ZERNI0, "posts:list", "--status", status, "--limit", str(limit), "--pretty"])
     return data.get("posts", [])
 
 
-def source_ids_from_posts(posts: Iterable[dict]) -> Set[str]:
+def source_ids_from_posts(posts: Iterable[dict]) -> set[str]:
     ids = set()
     for post in posts:
         media_items = post.get("mediaItems") or []
@@ -59,15 +64,15 @@ def source_ids_from_posts(posts: Iterable[dict]) -> Set[str]:
     return ids
 
 
-def fetch_published_source_ids(limit: int = 100) -> Set[str]:
+def fetch_published_source_ids(limit: int = 100) -> set[str]:
     return source_ids_from_posts(fetch_posts("published", limit=limit))
 
 
-def fetch_scheduled_source_ids(limit: int = 100) -> Set[str]:
+def fetch_scheduled_source_ids(limit: int = 100) -> set[str]:
     return source_ids_from_posts(fetch_posts("scheduled", limit=limit))
 
 
-def get_all_seen_source_ids(include_scheduled: bool = True) -> Set[str]:
+def get_all_seen_source_ids(include_scheduled: bool = True) -> set[str]:
     seen = set(load_history())
     seen |= fetch_published_source_ids()
     if include_scheduled:
@@ -75,7 +80,7 @@ def get_all_seen_source_ids(include_scheduled: bool = True) -> Set[str]:
     return seen
 
 
-def is_new(video_id: str, seen_ids: Set[str]) -> bool:
+def is_new(video_id: str, seen_ids: set[str]) -> bool:
     return bool(video_id) and video_id not in seen_ids
 
 
@@ -103,7 +108,7 @@ def duplicate_counts(video_ids: Iterable[str]) -> Counter:
     return Counter(video_id for video_id in video_ids if video_id)
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     history_ids = load_history()
     published_ids = fetch_published_source_ids()
     scheduled_ids = fetch_scheduled_source_ids()

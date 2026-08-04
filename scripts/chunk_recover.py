@@ -17,6 +17,7 @@ MANIFEST = "/Users/cmd/galaxycoilszernio/backups/2026-05-20-fix/rebuild-manifest
 
 from scripts.post_utils import create_post as _create_post
 
+
 def create_post(item):
     return _create_post(item["mediaUrl"], item["content"], item["scheduledFor"], max_retries=1)
 
@@ -35,9 +36,9 @@ def main():
         print("Error: start must be >= 0 and end must be > start.")
         return
 
-    with open(MANIFEST, "r") as f:
+    with open(MANIFEST) as f:
         manifest = json.load(f)
-        
+
     for i in range(start, min(end, len(manifest))):
         print(f"Creating post {i+1}/{len(manifest)}...")
         if create_post(manifest[i]):

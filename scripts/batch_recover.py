@@ -18,6 +18,7 @@ MANIFEST = "/Users/cmd/galaxycoilszernio/backups/2026-05-20-fix/rebuild-manifest
 
 from scripts.post_utils import create_post as _create_post
 
+
 def create_post(item):
     return _create_post(item["mediaUrl"], item["content"], item["scheduledFor"])
 
@@ -32,9 +33,9 @@ def main():
     args = parser.parse_args()
 
     batch_num = args.batch_num
-    with open(MANIFEST, "r") as f:
+    with open(MANIFEST) as f:
         manifest = json.load(f)
-    
+
     # Split into 4 batches
     batch_size = len(manifest) // 4 + 1
     start = batch_num * batch_size
@@ -44,7 +45,7 @@ def main():
     print(f"Running batch {batch_num} ({start} to {end})...")
     for item in batch:
         if create_post(item):
-            time.sleep(5) 
+            time.sleep(5)
         else:
             print(f"Batch {batch_num} stopped on failure.")
             break

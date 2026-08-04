@@ -18,14 +18,14 @@ import random
 import subprocess
 import sys
 import time
-from typing import Any, Dict, List, Optional
 from pathlib import Path
 
 # Ensure project root is on sys.path so `from scripts.post_utils import ...` works
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from scripts.captions_pool import CTA_CAPTIONS
-from scripts.post_utils import ZERNI0, create_post as _create_post
+from scripts.post_utils import ZERNI0
+from scripts.post_utils import create_post as _create_post
 
 
 def _run_json(cmd):
@@ -71,19 +71,19 @@ def fix_post(post_id):
     # 1. Get current post details
     details = get_post_details(post_id)
     if not details:
-        print(f"  SKIP: could not fetch post details")
+        print("  SKIP: could not fetch post details")
         return False
     if not details["media_url"]:
-        print(f"  SKIP: no media URL found")
+        print("  SKIP: no media URL found")
         return False
     if not details["scheduled_for"]:
-        print(f"  SKIP: no scheduled time (already published?)")
+        print("  SKIP: no scheduled time (already published?)")
         return False
 
     # 2. Delete the old post
-    print(f"  Deleting old post...")
+    print("  Deleting old post...")
     if not _run_ok([ZERNI0, "posts:delete", post_id]):
-        print(f"  SKIP: failed to delete")
+        print("  SKIP: failed to delete")
         return False
     time.sleep(1)  # brief gap to avoid rate limiting
 
@@ -98,20 +98,42 @@ def fix_post(post_id):
         accounts=accounts,
     )
     if ok:
-        print(f"  OK: recreated successfully")
+        print("  OK: recreated successfully")
     else:
-        print(f"  FAIL: could not recreate post")
+        print("  FAIL: could not recreate post")
     return ok
 
 
 def find_empty_posts():
-    """Fetch all scheduled posts and return IDs of those with empty captions."""
+    """Fetch scheduled posts; return (empty-caption IDs, total scheduled)."""
     data = _run_json([ZERNI0, "posts:list", "--status", "scheduled", "--limit", "100", "--pretty"])
     if not data:
         print("Failed to fetch scheduled posts.")
-        return []
+        return [], 0
     posts = data.get("posts", [])
-    return [p["_id"] for p in posts if not (p.get("content") or "").strip()]
+    empty_ids = [p["_id"] for p in posts if not (p.get("content") or "").strip()]
+    return empty_ids, len(posts)
+
+
+def select_posts_to_fix(empty_ids, total_scheduled, min_empty=0,
+                        max_empty_ratio=0.35, target_ratio=0.30):
+    """Decide which empty-caption posts to fix without breaking the content mix.
+
+    ~30% empty captions are intentional (engagement pivot, PLAN.md). The old
+    behavior fixed ALL empties once count > min_empty — with a 50-post queue
+    that converted ~15 intentional empties into CTAs and destroyed the mix.
+
+    Now: act only when empties exceed max_empty_ratio of the queue (and the
+    min_empty floor), and then only fix enough posts to bring the ratio back
+    down to target_ratio.
+    """
+    total_empty = len(empty_ids)
+    if total_scheduled <= 0 or total_empty <= min_empty:
+        return []
+    if total_empty / total_scheduled <= max_empty_ratio:
+        return []
+    target_empty = int(total_scheduled * target_ratio)
+    return list(empty_ids[: max(0, total_empty - target_empty)])
 
 
 def dry_run(empty_post_ids):
@@ -132,7 +154,7 @@ def dry_run(empty_post_ids):
         print(f"  New caption: {caption[:60]}{'...' if len(caption) > 60 else ''}")
         print()
         time.sleep(1)  # gap to avoid rate limiting on posts:get calls
-    print(f"DRY RUN complete — no posts were modified.")
+    print("DRY RUN complete — no posts were modified.")
 
 
 def main():
@@ -142,31 +164,53 @@ def main():
         "--min-empty", type=int, default=0, metavar="N",
         help="Only fix if more than N empty-caption posts exist (default: 0, fix any)"
     )
+    parser.add_argument(
+        "--max-empty-ratio", type=float, default=0.35, metavar="R",
+        help="Only act when empties exceed this fraction of the queue (default: 0.35). "
+             "Protects the intentional ~30%% empty-caption mix from the engagement pivot."
+    )
+    parser.add_argument(
+        "--target-ratio", type=float, default=0.30, metavar="R",
+        help="Fix only enough posts to bring empties back to this fraction (default: 0.30)."
+    )
     args = parser.parse_args()
 
-    empty_post_ids = find_empty_posts()
+    empty_post_ids, total_scheduled = find_empty_posts()
     total = len(empty_post_ids)
 
     if total == 0:
         print("No empty-caption posts found.")
         return
 
-    if total <= args.min_empty:
-        print(f"{total} empty-caption post(s) found — at or below --min-empty threshold of {args.min_empty}. Skipping.")
+    to_fix = select_posts_to_fix(
+        empty_post_ids, total_scheduled,
+        min_empty=args.min_empty,
+        max_empty_ratio=args.max_empty_ratio,
+        target_ratio=args.target_ratio,
+    )
+    if not to_fix:
+        ratio = total / total_scheduled if total_scheduled else 0
+        print(
+            f"{total} empty-caption post(s) out of {total_scheduled} scheduled "
+            f"({ratio:.0%}) — within the intentional mix "
+            f"(max {args.max_empty_ratio:.0%}). Skipping."
+        )
         return
 
+    print(f"{total} empties exceed the intentional mix — fixing {len(to_fix)} of them.")
+
     if args.dry_run:
-        dry_run(empty_post_ids)
+        dry_run(to_fix)
         return
 
     ok_count = 0
-    for i, pid in enumerate(empty_post_ids, 1):
-        print(f"[{i}/{total}] {pid}")
+    for i, pid in enumerate(to_fix, 1):
+        print(f"[{i}/{len(to_fix)}] {pid}")
         if fix_post(pid):
             ok_count += 1
         time.sleep(2)  # gap between posts to avoid rate limiting
-    print(f"\nDone: {ok_count}/{total} posts fixed.")
+    print(f"\nDone: {ok_count}/{len(to_fix)} posts fixed.")
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     main()

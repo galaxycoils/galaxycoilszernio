@@ -24,6 +24,20 @@ logs/
 # History backup
 history.log.bak
 
+# Local tool state (machine-specific, never portable)
+.antigravitycli/
+
+# Generated audit artifacts (regenerate on demand)
+queue_audit.json
+
+# Test/lint/type caches
+.coverage
+coverage.xml
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
 # Environment
 .env
 .venv/

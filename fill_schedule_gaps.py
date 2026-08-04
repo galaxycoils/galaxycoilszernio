@@ -12,7 +12,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-from schedule_5_per_day import open_slots, fetch_unique_urls, generate_caption_plan, create_post
+from schedule_5_per_day import create_post, fetch_unique_urls, generate_caption_plan, open_slots
 
 POSTS_TO_SCHEDULE = 10
 
@@ -36,18 +36,18 @@ def main():
 
     if args.dry_run:
         print(f"[DRY RUN] Would schedule {len(slots)} posts:\n")
-        for scheduled_at, caption in zip(slots, captions):
+        for scheduled_at, caption in zip(slots, captions, strict=False):
             print(f"  {scheduled_at}  →  {caption}")
-        print(f"\n[DRY RUN] No posts created.")
+        print("\n[DRY RUN] No posts created.")
         return
 
     urls = fetch_unique_urls(limit=len(slots))
     if len(urls) < len(slots):
         raise RuntimeError(f"Only found {len(urls)} unique videos for {len(slots)} slots")
-    for scheduled_at, url, caption in zip(slots, urls, captions):
+    for scheduled_at, url, caption in zip(slots, urls, captions, strict=False):
         create_post(url, caption, scheduled_at)
     print(f"Successfully scheduled {len(slots)} posts.")
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     main()
